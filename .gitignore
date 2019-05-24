@@ -1,4 +1,6 @@
 #cpy file
 *.pyc
 
-.DC*
+#Mac system files
+*.DS_Store
+

@@ -37,7 +37,7 @@ def load_database(DB_file_name):
     except Exception as e: 
         print(e)
         
-def safe_database(DB_file_name, BD):
+def safe_database(BD,DB_file_name):
     path_to_database = os.path.join(path_to_data,DB_file_name)
     exists = os.path.isfile(path_to_database)
     if exists:
@@ -47,12 +47,31 @@ def safe_database(DB_file_name, BD):
 
 
 
-def create_database():
-    symbols_df = web.get_nasdaq_symbols()
-    symbols_df = symbols_df[symbols_df.ETF==False]
-    sym_list = list(symbols_df.index)
-    db = web.DataReader(sym_list, 'yahoo', start='2019-01-10')
+def create_database(stock_symbol='GOOGLE', start = None, end = None):
+    db = web.DataReader(stock_symbol, 'yahoo', start=start, end=end)
+    db = db.Close
+    db = db.loc[~db.index.duplicated(keep='first')]
+    db.rename(stock_symbol, inplace=True)
+    return db
     
+
+def add_stock(db, stock_symbol, start=None, end=None):
+    ndb = create_database(stock_symbol, start, end)
+    return pd.concat((db,ndb),axis=1,join='outer')
+    
+ 
+    
+symbols_df = web.get_nasdaq_symbols()
+symbols_df = symbols_df[symbols_df.ETF==False]
+sym_list = list(symbols_df.index)
+
+db1 = create_database(sym_list[0], start=1900)
+for i in range(len(sym_list)):
+    try:
+        db1 = add_stock(db1,sym_list[i],start='1900')
+        if i % 10 == 0 :
+            safe_database(db1,'close_2019_05_24')
+        
 
 
 
