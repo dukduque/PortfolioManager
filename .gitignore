@@ -1,0 +1,4 @@
+#cpy file
+*.pyc
+
+.DC*
