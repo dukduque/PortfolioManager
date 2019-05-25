@@ -15,12 +15,14 @@ path_to_file = os.path.dirname(os.path.realpath(__file__))
 parent_path = os.path.abspath(os.path.join(path_to_file, os.pardir))
 sys.path.append(parent_path)
 path_to_data = os.path.abspath(os.path.join(parent_path,  'data'))
-
+path_to_output = os.path.abspath(os.path.join(parent_path,  'output'))
 '''
 Setup libraries
 '''
 import pandas as pd
 import numpy as np
+import multiprocessing as mp
+import itertools
 import pandas_datareader.data as web
 import datetime
 import pickle
@@ -69,11 +71,16 @@ def create_database(stock_symbol='GOOGLE', start = None, end = None):
         start (str or datetime): start date of the query
         end (str or datetime): end time of the query
     '''
+    print(stock_symbol)
     db = web.DataReader(stock_symbol, 'yahoo', start=start, end=end)
     db = db.Close
     db = db.loc[~db.index.duplicated(keep='first')]
     db.rename(stock_symbol, inplace=True)
     return db
+
+def create_database_mp(input_date):
+    return create_database(*input_date)
+    
     
 
 def add_stock(db, stock_symbol, start=None, end=None):
@@ -96,17 +103,25 @@ def quotien_diff(x):
     return np.divide(x[1:],x[:-1])
  
 
-def get_returns(data_file = 'close_2019_05_24.pkl', from_year='2000'):
+def get_returns(data_file = 'close_2019_05_24.pkl', start_date='2000', stocks = []):
     '''
     Computes the returns for stocks in the data file from
     a given year. All prices should be avaialbe to consider 
     a stock.
+    Args:
+        data_file (str): database file
+        start_date (datetime): initial date
     '''
-    assert from_year >= 1970, 'Year should be from 1970'
+    assert start_date >= datetime.datetime(1970,1,1), 'Year should be from 1970'
     db = load_database(data_file)
-    db = db[db.index>'%i' %(from_year)]
+    if len(stocks)>0:
+        db = db[stocks]
+    db = db[db.index>start_date]
     db = db.dropna(axis=1)
     db_r = db.apply(quotien_diff,axis=0) #compute returns
+    db_r = db_r[db_r<1.5].dropna() #Filter outliers
+    db = db.filter(db_r.columns, axis=1)
+    db = db.filter(db_r.index, axis=0)
     
     r_data = np.array(db_r)
     return db, r_data
@@ -117,6 +132,13 @@ def update_database(db):
     '''
     ts = db.index[-1] #get last date in DB
     ndb = pd.DataFrame() 
+    
+    data_pool = mp.Pool(4)
+    stock_list = db.columns.to_list()
+    stock_tasks = itertools.product(stock_list,[ts])
+    
+    
+    #TODO: finish multipocess 
     for c in db.columns:
         try:
             print('Updating ', c)
