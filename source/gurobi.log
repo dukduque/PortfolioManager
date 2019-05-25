@@ -1,0 +1,51 @@
+
+Gurobi 8.1.1 (mac64, Python) logging started Fri May 24 16:56:18 2019
+
+Academic license - for non-commercial use only
+Parameter OutputFlag unchanged
+   Value: 1  Min: 0  Max: 1  Default: 1
+Changed value of parameter NumericFocus to 3
+   Prev: 0  Min: 0  Max: 3  Default: 0
+Parameter OutputFlag unchanged
+   Value: 1  Min: 0  Max: 1  Default: 1
+Optimize a model with 2537 rows, 2537 columns and 10141 nonzeros
+Model has 3 quadratic objective terms
+Model has 1 quadratic constraint
+Coefficient statistics:
+  Matrix range     [3e-02, 1e+01]
+  QMatrix range    [2e-11, 3e+04]
+  Objective range  [0e+00, 0e+00]
+  QObjective range [2e-03, 2e+00]
+  Bounds range     [1e+00, 1e+00]
+  RHS range        [1e+00, 1e+00]
+Warning: Quadratic constraint contains large coefficient range
+         Consider reformulating model or setting NumericFocus parameter
+         to avoid numerical issues.
+Presolve time: 1.07s
+Presolved: 5074 rows, 5075 columns, 3227061 nonzeros
+Presolved model has 2 second-order cone constraints
+Ordering time: 0.00s
+
+Barrier statistics:
+ AA' NZ     : 9.653e+06
+ Factor NZ  : 1.287e+07 (roughly 100 MBytes of memory)
+ Factor Ops : 4.353e+10 (roughly 1 second per iteration)
+ Threads    : 2
+
+                  Objective                Residual
+Iter       Primal          Dual         Primal    Dual     Compl     Time
+   0   0.00000000e+00 -1.00000000e-01  2.53e+02 1.00e-01  5.03e-03     9s
+   1   2.16231027e-03 -1.05791779e-01  2.79e-04 1.49e-04  1.44e-05    11s
+   2   7.34083269e-04 -9.33688725e-04  3.06e-10 9.30e-07  1.88e-07    14s
+   3   1.74101515e-04 -1.29247776e-04  1.31e-12 5.18e-08  3.08e-08    16s
+   4   4.60808115e-05 -5.40488820e-05  1.35e-12 1.54e-08  9.98e-09    18s
+   5   4.54918653e-05 -2.19836914e-05  8.22e-13 6.55e-09  6.70e-09    20s
+   6   3.88105118e-05 -1.39609789e-05  3.79e-12 4.20e-09  5.23e-09    22s
+   7   3.18296687e-05 -3.26051678e-06  1.35e-11 1.59e-09  3.47e-09    25s
+   8   2.57027319e-05  7.48395808e-06  6.00e-12 1.75e-10  1.80e-09    27s
+   9   1.52563117e-05  9.89795736e-06  4.41e-11 5.66e-11  5.28e-10    29s
+  10   1.23486077e-05  1.09681269e-05  2.59e-10 2.14e-11  1.36e-10    31s
+
+Barrier solved model in 10 iterations and 31.30 seconds
+Optimal objective 1.23486077e-05
+
