@@ -16,6 +16,7 @@ parent_path = os.path.abspath(os.path.join(path_to_file, os.pardir))
 sys.path.append(parent_path)
 path_to_data = os.path.abspath(os.path.join(parent_path,  'data'))
 path_to_output = os.path.abspath(os.path.join(parent_path,  'output'))
+
 '''
 Setup libraries
 '''
@@ -71,10 +72,11 @@ def create_database(stock_symbol='GOOGLE', start = None, end = None):
         start (str or datetime): start date of the query
         end (str or datetime): end time of the query
     '''
-    print(stock_symbol)
+    print(stock_symbol, start, end)
     db = web.DataReader(stock_symbol, 'yahoo', start=start, end=end)
     db = db.Close
-    db = db.loc[~db.index.duplicated(keep='first')]
+    db = db.loc[~db.index.duplicated(keep='last')]
+    db = db[db.index>=start]
     db.rename(stock_symbol, inplace=True)
     return db
 
@@ -139,9 +141,13 @@ def update_database(db, n_proc=1):
     if n_proc > 1:
         data_pool = mp.Pool(n_proc)
         stock_list = db.columns.to_list()
-        stock_tasks = itertools.product(stock_list,[ts])
-        dbs = data_pool.map(create_database_mp,stock_tasks,chunksize=100)
-        ndb = pd.concat(dbs,axis=1,join='outer')
+        n = 100
+        chunks = [stock_list[i*n:(i+1)*n] for i in range((len(stock_list)+n-1)//n)]
+        for chunk in chunks:
+            stock_tasks = itertools.product(chunk,[ts])
+            dbs = data_pool.map(create_database_mp,stock_tasks, 10)
+            dbs = pd.concat(dbs,axis=1,join='outer')
+            ndb = pd.concat((ndb, dbs),axis=1,join='outer')           
         data_pool.close()
     else:
         for c in db.columns:
@@ -179,6 +185,6 @@ def download_all_data(DB_file_name):
 
 
 if __name__ == '__main__':
-    db = load_database('close_2019_05_24.pkl')
-    db = update_database(db, 10)
+    db = load_database('close_2019_05_25.pkl')
+    db = update_database(db, 4)
     save_database(db, 'close_2019_05_25.pkl')
