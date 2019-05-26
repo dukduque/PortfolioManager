@@ -126,27 +126,33 @@ def get_returns(data_file = 'close_2019_05_24.pkl', start_date='2000', stocks = 
     r_data = np.array(db_r)
     return db, r_data
 
-def update_database(db):
+def update_database(db, n_proc=1):
     '''
     Updates a database from the last prices.
+    If n_proc > 1, runs a mutiprocess version of
+    the function to speedup the colection of data.
     '''
     ts = db.index[-1] #get last date in DB
     ndb = pd.DataFrame() 
     
-    data_pool = mp.Pool(4)
-    stock_list = db.columns.to_list()
-    stock_tasks = itertools.product(stock_list,[ts])
-    
-    
-    #TODO: finish multipocess 
-    for c in db.columns:
-        try:
-            print('Updating ', c)
-            ndb = add_stock(ndb, c, start=ts)
-        except Exception as e: 
-            print(e)
+    print('Updating %i stock with %i processors' %(len(db.columns), n_proc))
+    if n_proc > 1:
+        data_pool = mp.Pool(n_proc)
+        stock_list = db.columns.to_list()
+        stock_tasks = itertools.product(stock_list,[ts])
+        dbs = data_pool.map(create_database_mp,stock_tasks,chunksize=100)
+        ndb = pd.concat(dbs,axis=1,join='outer')
+        data_pool.close()
+    else:
+        for c in db.columns:
+            try:
+                print('Updating ', c)
+                ndb = add_stock(ndb, c, start=ts)
+            except Exception as e: 
+                print(e)
+                
     out_db = pd.concat((db,ndb),axis=0,join='outer')
-    out_db.loc[~out_db.index.duplicated(keep='last')]
+    out_db = out_db.loc[~out_db.index.duplicated(keep='last')]
     return out_db
     
 
@@ -174,5 +180,5 @@ def download_all_data(DB_file_name):
 
 if __name__ == '__main__':
     db = load_database('close_2019_05_24.pkl')
-    db = update_database(db)
+    db = update_database(db, 10)
     save_database(db, 'close_2019_05_25.pkl')
