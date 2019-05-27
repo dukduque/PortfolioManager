@@ -43,6 +43,8 @@ class markovitz_dro_wasserstein(AbstractModel):
         n = len(data)
         m = Model('opt_profolio')
         m.params.OutputFlag = 1
+        m.params.TimeLimit = 100
+        m.params.MIPGap = 0.01
         #m.params.NumericFocus = 3
         x = m.addVars(k,lb=0,ub=1,vtype=GRB.CONTINUOUS,name='x')
         norm_p = m.addVar(lb=0,ub=1, vtype=GRB.CONTINUOUS, name='norm')

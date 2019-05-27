@@ -24,6 +24,7 @@ import source.popt_utils as popt_utils
 import pandas as pd
 import numpy as np
 import multiprocessing as mp
+import bs4 as bs
 import itertools
 import yfinance as yf #Works awsome!
 import pandas_datareader.data as web #yahoo or av-daily, but glichy
@@ -32,6 +33,27 @@ AV_TS = TimeSeries(key='OSZLY662JJE9SVS1', output_format='pandas')
 import datetime
 import pickle
 import shutil 
+import requests
+
+
+
+
+def save_sp500_tickers():
+    '''
+    https://pythonprogramming.net/sp500-company-list-python-programming-for-finance/
+    '''
+    resp = requests.get('http://en.wikipedia.org/wiki/List_of_S%26P_500_companies')
+    soup = bs.BeautifulSoup(resp.text, 'lxml')
+    table = soup.find('table', {'class': 'wikitable sortable'})
+    tickers = []
+    for row in table.findAll('tr')[1:]:
+        ticker = row.findAll('td')[0].text
+        tickers.append(ticker.replace('\n',''))
+    path_to_file = os.path.join(path_to_data,"sp500tickers.pickle")
+    with open(path_to_file,"wb") as f:
+        pickle.dump(tickers,f)
+        
+    return tickers
 
 
 def load_database(DB_file_name):
@@ -146,7 +168,7 @@ def get_returns(data_file, start_date='2000', stocks = []):
     assert start_date >= datetime.datetime(1970,1,1), 'Year should be from 1970'
     db = load_database(data_file)
     if len(stocks)>0:
-        db = db[stocks]
+        db = db[db.columns.intersection(stocks)]
     db = db[db.index>start_date]
     db = db.dropna(axis=1)
     db_r = db.apply(quotien_diff,axis=0) #compute returns

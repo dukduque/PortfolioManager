@@ -22,18 +22,21 @@ import datetime as dt
 
 
 my_date = dt.datetime(2013,1,1)
-db, data = dbh.get_returns(data_file = 'close_2019-05-26.pkl', start_date= my_date)#, stocks=['ABC','MSFT', 'AMZN', 'GOOGL', 'GE', 'F', 'MMM', 'ATVI'])
+sp500 = dbh.save_sp500_tickers()
+db, data = dbh.get_returns(data_file = 'close_2019-05-26.pkl', 
+                           start_date= my_date,
+                           stocks=sp500)#, stocks=['ABC','MSFT', 'AMZN', 'GOOGL', 'GE', 'F', 'MMM', 'ATVI'])
 
 #out_dro_model = markovitz_dro_wasserstein(data, 0.001,1.001)
 
 price = db.iloc[-1] #Last row is the current price
-cvar_mod = cvar_model(data, price, budget=100000, fractional=False)
+cvar_mod = cvar_model(data, price, budget=2000, fractional=False)
 
 portfolios = []
 portfolio_stats = []
 for cvar_beta in [0.5,0.9]:
     cvar_sol1, cvar_stats1 = cvar_mod.change_cvar_params(cvar_beta=cvar_beta)
-    portfolios.append(cvar_sol1)
+    portfolios.append(cvar_sol1[cvar_sol1.stock>0])
     portfolio_stats.append(cvar_stats1)
 
 portfolio_paths = []
