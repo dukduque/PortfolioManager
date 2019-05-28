@@ -14,7 +14,7 @@ path_to_file = os.path.dirname(os.path.realpath(__file__))
 parent_path = os.path.abspath(os.path.join(path_to_file, os.pardir))
 sys.path.append(parent_path)
 
-from source.opt_tools import markovitz_dro_wasserstein, cvar_model
+from source.opt_tools import cvar_model
 import source.database_handler as dbh
 import backtest as bt
 import pandas as pd
@@ -34,7 +34,7 @@ cvar_mod = cvar_model(data, price, budget=2000, fractional=False)
 
 portfolios = []
 portfolio_stats = []
-for cvar_beta in [0.5,0.9]:
+for cvar_beta in [0.5,0.9,0.99]:
     cvar_sol1, cvar_stats1 = cvar_mod.change_cvar_params(cvar_beta=cvar_beta)
     portfolios.append(cvar_sol1[cvar_sol1.stock>0])
     portfolio_stats.append(cvar_stats1)

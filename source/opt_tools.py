@@ -4,6 +4,9 @@
 Created on Thu May 23 22:35:42 2019
 
 @author: dduque
+
+Implements several optimiztion models for
+porfolio optimization.
 """
 from abc import ABC, abstractmethod
 import numpy as np
@@ -13,10 +16,13 @@ from gurobipy import GRB, Model, quicksum
 class AbstractModel(ABC):
     '''
     Abstract representation of an asset allocation model
+    Attributes:
+        m (object): a reference of a model that performs the optimization.
     '''
     
     @abstractmethod
     def __init__(self):
+        self.m = None
         pass
     
     @abstractmethod
@@ -30,7 +36,7 @@ class AbstractModel(ABC):
     
 
 
-class markovitz_dro_wasserstein(AbstractModel):
+class markowitz_dro_wasserstein(AbstractModel):
     def __init__(self, data, price, budget, delta_param, alpha_param, wasserstein_norm=1):
         '''
         Model from Blanchet et al. 2017

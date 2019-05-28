@@ -6,3 +6,7 @@
 
 #log files
 *.log
+
+#Spyder files
+*.ini
+.spyproject/

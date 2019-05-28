@@ -28,7 +28,7 @@ import bs4 as bs
 import itertools
 import yfinance as yf #Works awsome!
 import pandas_datareader.data as web #yahoo or av-daily, but glichy
-from alpha_vantage.timeseries import TimeSeries #API limits
+from alpha_vantage.timeseries import TimeSeries #API limits, 5 queries per minute
 AV_TS = TimeSeries(key='OSZLY662JJE9SVS1', output_format='pandas')
 import datetime
 import pickle
