@@ -66,7 +66,6 @@ def load_database(DB_file_name):
     exists = os.path.isfile(path_to_database)
     if exists == False:
         raise 'File %s does not exist' %(DB_file_name)
-        return None
     try:
         return pd.read_pickle(path_to_database)
     except Exception as e: 
@@ -233,7 +232,7 @@ def download_all_data(DB_file_name):
     symbols_df = symbols_df[symbols_df.ETF==False]
     sym_list = list(symbols_df.index)
     
-    db1 = create_database(sym_list[0], start=1900)
+    db1, _ = create_database(sym_list[0], start=1900)
     for i in range(1,len(sym_list)):
         try:
             db1 = add_stock(db1,sym_list[i],start='1900')
@@ -260,6 +259,7 @@ if __name__ == '__main__':
         str_today = str(today_ts)
         out_file = 'close_%s.pkl' %(str_today.split(' ')[0])
         save_database(db, out_file)
+        
      
     #db = load_database('close_2019-05-26.pkl')
     #ini_time = datetime.datetime(2019,5,20)

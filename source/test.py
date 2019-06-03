@@ -23,9 +23,9 @@ import datetime as dt
 
 my_date = dt.datetime(2013,1,1)
 sp500 = dbh.save_sp500_tickers()
-db, data = dbh.get_returns(data_file = 'close_2019-05-26.pkl', 
-                           start_date= my_date,
-                           stocks=sp500)#, stocks=['ABC','MSFT', 'AMZN', 'GOOGL', 'GE', 'F', 'MMM', 'ATVI'])
+db, data = dbh.get_returns(data_file  = 'close_2019-05-26.pkl', 
+                           start_date = my_date,
+                           stocks = sp500)#, stocks=['ABC','MSFT', 'AMZN', 'GOOGL', 'GE', 'F', 'MMM', 'ATVI'])
 
 #out_dro_model = markovitz_dro_wasserstein(data, 0.001,1.001)
 

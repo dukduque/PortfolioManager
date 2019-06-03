@@ -10,3 +10,7 @@
 #Spyder files
 *.ini
 .spyproject/
+
+#Pickle files
+*.pkl 
+
