@@ -58,6 +58,25 @@ def save_sp500_tickers():
         
     return tickers
 
+def save_rusell1000_tickers():
+    '''
+    https://pythonprogramming.net/sp500-company-list-python-programming-for-finance/
+    '''
+    resp = requests.get('https://en.wikipedia.org/wiki/Russell_1000_Index')
+    soup = bs.BeautifulSoup(resp.text, 'lxml')
+    tables = soup.find_all('table')
+    table = tables[2]
+    tickers = []
+    for row in table.findAll('tr')[1:]:
+        ticker = row.findAll('td')[1].text
+        tickers.append(ticker.replace('\n',''))
+    path_to_file = os.path.join(path_to_data,"rusell1000tickers.pickle")
+    with open(path_to_file,"wb") as f:
+        pickle.dump(tickers,f)
+        
+    return tickers
+
+
 
 def load_database(DB_file_name):
     '''
