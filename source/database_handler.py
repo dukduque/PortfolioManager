@@ -4,6 +4,10 @@
 Created on Thu May 23 22:32:31 2019
 
 @author: dduque
+
+This module implements function to manage the prices database and
+acces the information. As of 2019/06/03, the package to acces price
+data is yfinance.
 """
 
 '''
@@ -34,7 +38,6 @@ import datetime
 import pickle
 import shutil 
 import requests
-
 
 
 
