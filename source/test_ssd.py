@@ -5,6 +5,7 @@ Created on Thu May 23 22:36:26 2019
 '''
 Setup paths
 '''
+
 import sys
 import os
 import datetime as dt
@@ -13,13 +14,13 @@ import numpy as np
 
 import backtest as bt
 import database_handler as dbh
-from opt_tools import cvar_model_pulp
+from opt_tools import ssd_model_pulp
 path_to_file = os.path.dirname(os.path.realpath(__file__))
 parent_path = os.path.abspath(os.path.join(path_to_file, os.pardir))
 sys.path.append(parent_path)
 
-start_date = dt.datetime(2000, 6, 20)
-sp500 = dbh.yf.Ticker("^GSPC") # Ticker
+start_date = dt.datetime(2010, 6, 20)
+sp500 = dbh.yf.Ticker("^GSPC")  # Ticker
 sp500history = sp500.history(period='max', interval='1d')['Close']
 sp500history = sp500history[sp500history.index >= start_date]
 sp500_stocks = dbh.save_sp500_tickers()
@@ -27,11 +28,10 @@ sp500_stocks_tickers = list(sp500_stocks.keys())
 db_all, _ = dbh.get_returns(data_file='close.pkl', start_date=start_date, stocks=sp500_stocks_tickers)
 
 # Train set
-end_date_train = dt.datetime(2002, 6, 20)
+end_date_train = dt.datetime(2011, 6, 20)
 stock_universe = list(db_all.columns)
-db, db_r = dbh.get_returns(
-    data_file='close.pkl', start_date=start_date, end_date=end_date_train, stocks=stock_universe)
-    # ['ABC','MSFT', 'AMZN', 'GOOGL', 'GE', 'F', 'MMM', 'ATVI'])
+db, db_r = dbh.get_returns(data_file='close.pkl', start_date=start_date, end_date=end_date_train, stocks=stock_universe)
+# ['ABC','MSFT', 'AMZN', 'GOOGL', 'GE', 'F', 'MMM', 'ATVI'])
 data = np.array(db_r)
 '''
 Create modelwith default parameters
@@ -40,27 +40,28 @@ ini_capital = 2_000
 price = db.iloc[-1]  # Last row is the current price
 n_stocks = len(db_r.columns)
 sp500_benchmark = pd.Series(data=np.ones(n_stocks) / n_stocks, index=db_r.columns)
-opt_model = cvar_model_pulp(data, price, budget=ini_capital, fractional=False)
+
+opt_model = ssd_model_pulp(returns=db_r, price=price, budget=ini_capital, benchmark=sp500_benchmark, fractional=False)
 '''
 Solve parametricly in \beta
 '''
 portfolios = []
 portfolio_stats = []
-for cvar_beta in [0.1, 0.5]:  # [0.3, 0.5, 0.7, 0.9, 0.99]:
-    cvar_sol1, cvar_stats1 = opt_model.change_cvar_params(cvar_beta=cvar_beta)
-    portfolios.append(cvar_sol1[cvar_sol1.qty > 0])
-    portfolio_stats.append(cvar_stats1)
+model_sol, sol_stats = opt_model.optimize()
+portfolios.append(model_sol[model_sol.qty > 0])
+portfolio_stats.append(sol_stats)
 
 # SP500 porfolio
 allocation = np.ones(n_stocks) / n_stocks
-sp500_portfolio = pd.DataFrame({'price': price,
-              'qty': allocation * ini_capital / price,
-              'position': allocation * ini_capital,
-              'allocation': allocation,
-              'side': 'buy'})
+sp500_portfolio = pd.DataFrame({
+    'price': price,
+    'qty': allocation * ini_capital / price,
+    'position': allocation * ini_capital,
+    'allocation': allocation,
+    'side': 'buy'
+})
 portfolios.append(sp500_portfolio)
-stats_sp_500 = {'mean': opt_model.r_bar.dot(allocation),
-                'std': np.sqrt(allocation.dot(opt_model.cov.dot(allocation)))}
+stats_sp_500 = {'mean': opt_model.r_bar.dot(allocation), 'std': np.sqrt(allocation.dot(opt_model.cov.dot(allocation)))}
 portfolio_stats.append(stats_sp_500)
 
 for (p, ps) in zip(portfolios, portfolio_stats):
@@ -72,8 +73,15 @@ for (p, ps) in zip(portfolios, portfolio_stats):
 
 import pickle
 out_portfolios = portfolios, portfolio_stats
-pickle.dump(out_portfolios, open('./cvar_portfolio.pkl', 'wb'), pickle.HIGHEST_PROTOCOL)
+pickle.dump(out_portfolios, open('./ssd_portfolio.pkl', 'wb'), pickle.HIGHEST_PROTOCOL)
 
+# Back test
+start_date_test = end_date_train
+end_date_test = dt.datetime(2019, 6, 30)
+db, db_r = dbh.get_returns(data_file='close.pkl',
+                           start_date=start_date_test,
+                           end_date=end_date_test,
+                           stocks=stock_universe)
 # Back test
 start_date_test = end_date_train
 end_date_test = dt.datetime(2019, 6, 30)
@@ -88,8 +96,6 @@ factor = ini_capital / sp500history[0]
 sp500history = factor * sp500history
 portfolio_paths.append([sp500history])
 bt.plot_backtests(portfolio_paths)
-
-
 '''
 # Gurobi implmentation
 cvar_gurobi = cvar_model(data, price, budget=10000, fractional=False)

@@ -8,7 +8,7 @@ Created on Sun Jul 14 12:53:19 2019
 from os import environ
 from opt_tools import cvar_model_pulp
 import numpy as np
-import database_handler as dbh 
+import database_handler as dbh
 import datetime as dt
 import pickle
 import time
@@ -28,7 +28,7 @@ def cancel_all_orders(alpaca_api):
     orders = alpaca_api.list_orders()
     for o in orders:
         print(o.symbol, o.status)
-        api.cancel_order(order_id=o.id)
+        alpaca_api.cancel_order(order_id=o.id)
 
 def rebalance(api, additions=0, stock_univers='sp500'):
     '''

@@ -10,7 +10,9 @@ Implemnets backtesting function for a given porfolio
 
 import database_handler as dbh
 import matplotlib.pyplot as plt
+import matplotlib.colors as mcolors
 import datetime as dt
+import numpy as np
 
 
 def backtest(portfolio, test_data):
@@ -22,14 +24,14 @@ def backtest(portfolio, test_data):
         position (price*stocks), and allocation (position/total investment).
         test_data (DataFrame): a dataframe of stock returns.
     '''
-    stocks = portfolio[portfolio.stock > 0].index
+    stocks = portfolio[portfolio.qty > 0].index
     data = test_data[stocks]
-    position = portfolio[portfolio.stock > 0].position
+    qtys = portfolio[portfolio.qty > 0].qty
 
     cash_ini = portfolio.position.sum()
     cash_path = [cash_ini]
     for d in data.index:
-        position = data.loc[d]*(position)
+        position = data.loc[d] * (qtys)
         cash_path.append(position.sum())
 
     cash_end = position.sum()
@@ -42,25 +44,24 @@ def run_backtest(portfolio, stock_prices, start, end, test_length=1, plot=False)
     stock_data = stock_prices[stocks]
 
     date_diff = end - start
-    n_test = int(date_diff.days/(test_length*365))
+    n_test = np.maximum(1, int(date_diff.days / (test_length * 365)))
     start_y = start
     cash_paths = []
     for y in range(n_test):
-        start_y = start + dt.timedelta(test_length*365*y)
-        end_y = start_y + dt.timedelta(test_length*365)
+        start_y = start + dt.timedelta(test_length * 365 * y)
+        end_y = start_y + dt.timedelta(test_length * 365)
         print(start_y, end_y)
         stock_prices_y = stock_data[(stock_data.index >= start_y) & (
             stock_data.index <= end_y)]
-        stock_returns_y = stock_prices_y.apply(dbh.quotien_diff, axis=0)
-        cash_end, cash_path = backtest(portfolio, stock_returns_y)
+        # stock_returns_y = stock_prices_y.apply(dbh.quotien_diff, axis=0)
+        cash_end, cash_path = backtest(portfolio, stock_prices_y)
         print(cash_end)
         cash_paths.append(cash_path)
-    plt.show()
     return cash_paths
 
 
 def plot_backtests(portfolio_cash_paths):
-    my_colors = ['r', 'b', 'k', 'c', 'g']
+    my_colors = ['b', 'r', 'k', 'c', 'g', 'm', 'y', 'orange']
     fig, ax = plt.subplots(figsize=(7, 4), dpi=100)
     for (i, pcp) in enumerate(portfolio_cash_paths):
         for cp in pcp:
