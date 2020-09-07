@@ -9,11 +9,9 @@ This module implements function to manage the prices database and
 acces the information. As of 2019/06/03, the package to acces price
 data is yfinance.
 """
-
 '''
 Setup paths
 '''
-
 
 import shutil
 from alpha_vantage.timeseries import TimeSeries  # API limits, 5 queries per minute
@@ -47,8 +45,7 @@ def save_sp500_tickers():
     '''
     https://pythonprogramming.net/sp500-company-list-python-programming-for-finance/
     '''
-    resp = requests.get(
-        'http://en.wikipedia.org/wiki/List_of_S%26P_500_companies')
+    resp = requests.get('http://en.wikipedia.org/wiki/List_of_S%26P_500_companies')
     soup = bs.BeautifulSoup(resp.text, 'lxml')
     table = soup.find('table', {'class': 'wikitable sortable'})
     tickers = {}
@@ -62,7 +59,7 @@ def save_sp500_tickers():
     path_to_file = os.path.join(path_to_data, "sp500tickers.pickle")
     with open(path_to_file, "wb") as f:
         pickle.dump(tickers, f)
-
+    
     return tickers
 
 
@@ -81,7 +78,7 @@ def save_rusell1000_tickers():
     path_to_file = os.path.join(path_to_data, "rusell1000tickers.pickle")
     with open(path_to_file, "wb") as f:
         pickle.dump(tickers, f)
-
+    
     return tickers
 
 
@@ -130,20 +127,20 @@ def create_database(stock_symbol='GOOGLE', start=None, end=None):
         status (bool): true if the query was succesfull
     '''
     print(stock_symbol, start, end)
-
+    
     try:
         #        db = web.DataReader(stock_symbol, "av-daily", start=start ,end=end, access_key='OSZLY662JJE9SVS1')
         #        db['date'] =  [dt.datetime.strptime(d, '%Y-%m-%d') for d in db.index]
         #        db = db.set_index('date')
         #        db = db.close
-
+        
         #        db = web.DataReader(stock_symbol, 'yahoo', start=start, end=end)
         #        db = db.Close
-
+        
         stock = yf.Ticker(stock_symbol)
         db = stock.history(start=start, end=end)
         db = db.Close
-
+        
         db = db.loc[~db.index.duplicated(keep='last')]
         db = db[db.index >= start]
         db.rename(stock_symbol, inplace=True)
@@ -151,7 +148,7 @@ def create_database(stock_symbol='GOOGLE', start=None, end=None):
     except Exception as e:
         print(e)
         print('Fail to get: ', stock_symbol, start, end)
-
+    
     return stock_symbol, None, False
 
 
@@ -194,8 +191,7 @@ def get_returns(data_file, start_date='2000', end_date=dt.datetime.today(), stoc
         db (DataFrame): dataframe with the stock prices
         db_r (DataFrame): dataframe with the returns
     '''
-    assert start_date >= datetime.datetime(
-        1970, 1, 1), 'Year should be from 1970'
+    assert start_date >= datetime.datetime(1970, 1, 1), 'Year should be from 1970'
     db = load_database(data_file)
     if len(stocks) > 0:
         db = db[db.columns.intersection(stocks)]
@@ -207,7 +203,7 @@ def get_returns(data_file, start_date='2000', end_date=dt.datetime.today(), stoc
     db_r = db_r[db_r < 10.0].dropna(axis=1)  # Filter outliers
     db = db.filter(db_r.columns, axis=1)
     db = db.filter(db_r.index, axis=0)
-
+    
     return db, db_r
 
 
@@ -229,8 +225,7 @@ def update_database(db, n_proc=1):
         data_pool = mp.Pool(n_proc)
         stock_list = db.columns.to_list()
         n = 100
-        chunks = [stock_list[i*n:(i+1)*n]
-                  for i in range((len(stock_list)+n-1)//n)]
+        chunks = [stock_list[i * n:(i + 1) * n] for i in range((len(stock_list) + n - 1) // n)]
         for chunk in chunks:
             stock_tasks = itertools.product(chunk, [ts])
             mp_out = data_pool.map(create_database_mp, stock_tasks)
@@ -239,7 +234,7 @@ def update_database(db, n_proc=1):
                     ndb = pd.concat((ndb, db_s), axis=1, join='outer')
                 else:
                     failed_stocks.append(s)
-
+        
         data_pool.close()
     else:
         for c in db.columns:
@@ -255,27 +250,61 @@ def update_database(db, n_proc=1):
     return out_db
 
 
-def download_all_data(DB_file_name):
-    symbols_df = web.get_nasdaq_symbols()
-    symbols_df = symbols_df[symbols_df.ETF == False]
-    sym_list = list(symbols_df.index)
+def download_all_data(DB_file_name, sp500=True, rusell1000=True, n_proc=4):
+    # symbols_df = web.get_nasdaq_symbols()
+    # symbols_df = symbols_df[symbols_df.ETF == False]
+    # symbols_df = symbols_df[symbols_df.ETF == False]
+    # sym_list = list(symbols_df.index)
+    
+    sp500_stocks = save_sp500_tickers()
+    rusell1000_stocks = save_rusell1000_tickers()
+    stocks = set()
+    if sp500:
+        stocks.update(sp500_stocks.keys())
+    if rusell1000:
+        stocks.update(rusell1000_stocks)
+    stocks = list(stocks)
+    ini_data = dt.datetime(year=1990, month=1, day=1)
+    today = dt.datetime.today()
+    data = yf.download(stocks, start=ini_data, end=today, threads=n_proc)
+    close_data = data.Close
+    save_database(close_data, DB_file_name)
+    return close_data
+    
+    # db1, _ = create_database(sym_list[0], start=1900)
+    # for i in range(1, len(sym_list)):
+    #     try:
+    #         db1 = add_stock(db1, sym_list[i], start='1900')
+    #         if i % 100 == 0:
+    #             cols = len(db1.columns)
+    #             print('Got %i stocks for far' % (cols))
+    #
+    #     except Exception as e:
+    #         print(e)
+    # return db1
+    
+    # data_pool = mp.Pool(n_proc)
+    # stock_list = db.columns.to_list()
+    # n = 100
+    # chunks = [stock_list[i*n:(i+1)*n]
+    #             for i in range((len(stock_list)+n-1)//n)]
+    # for chunk in chunks:
+    #     stock_tasks = itertools.product(chunk, [ts])
+    #     mp_out = data_pool.map(create_database_mp, stock_tasks)
+    #     for s, db_s, status_s in mp_out:
+    #         if status_s:
+    #             ndb = pd.concat((ndb, db_s), axis=1, join='outer')
+    #         else:
+    #             failed_stocks.append(s)
+    
+    #     data_pool.close()
 
-    db1, _ = create_database(sym_list[0], start=1900)
-    for i in range(1, len(sym_list)):
-        try:
-            db1 = add_stock(db1, sym_list[i], start='1900')
-            if i % 100 == 0:
-                cols = len(db1.columns)
-                print('Got %i stocks for far' % (cols))
-                save_database(db1, DB_file_name)
-        except Exception as e:
-            print(e)
-    return db1
 
 def run_update_process(db_file_in='close.pkl', db_file_out='close.pkl', n_proc=4):
     db = load_database(db_file_in)
     db = update_database(db, n_proc)
     save_database(db, db_file_out)
+
 
 if __name__ == '__main__':
     args = popt_utils.dh_parse_arguments()
@@ -284,8 +313,10 @@ if __name__ == '__main__':
         today_ts = datetime.datetime.today()
         str_today = str(today_ts)
         out_file = 'close_%s.pkl' % (str_today.split(' ')[0])
-        run_update_process(args.db_file, out_file, args.proc)
-
+        run_update_process(args.db_file, out_file, args.n_proc)
+    elif args.a == 'd':
+        download_all_data(args.db_file)
+    
     #db = load_database('close_2019-05-26.pkl')
     #ini_time = datetime.datetime(2019,5,20)
     #new_db = yf.download(db.columns.to_list(), start = ini_time)

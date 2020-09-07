@@ -27,22 +27,25 @@ def backtest(portfolio, test_data):
     stocks = portfolio[portfolio.qty > 0].index
     data = test_data[stocks]
     qtys = portfolio[portfolio.qty > 0].qty
-
+    
     cash_ini = portfolio.position.sum()
     cash_path = [cash_ini]
     for d in data.index:
+        if sum(data.loc[d].isnull()) > 0:
+            print(d)
+            print(data.loc[d])
         position = data.loc[d] * (qtys)
         cash_path.append(position.sum())
-
+    
     cash_end = position.sum()
-
+    
     return cash_end, cash_path
 
 
 def run_backtest(portfolio, stock_prices, start, end, test_length=1, plot=False):
     stocks = portfolio[portfolio.position > 0].index
     stock_data = stock_prices[stocks]
-
+    
     date_diff = end - start
     n_test = np.maximum(1, int(date_diff.days / (test_length * 365)))
     start_y = start
@@ -51,8 +54,7 @@ def run_backtest(portfolio, stock_prices, start, end, test_length=1, plot=False)
         start_y = start + dt.timedelta(test_length * 365 * y)
         end_y = start_y + dt.timedelta(test_length * 365)
         print(start_y, end_y)
-        stock_prices_y = stock_data[(stock_data.index >= start_y) & (
-            stock_data.index <= end_y)]
+        stock_prices_y = stock_data[(stock_data.index >= start_y) & (stock_data.index <= end_y)]
         # stock_returns_y = stock_prices_y.apply(dbh.quotien_diff, axis=0)
         cash_end, cash_path = backtest(portfolio, stock_prices_y)
         print(cash_end)
@@ -60,11 +62,12 @@ def run_backtest(portfolio, stock_prices, start, end, test_length=1, plot=False)
     return cash_paths
 
 
-def plot_backtests(portfolio_cash_paths):
+def plot_backtests(portfolio_cash_paths, portfolio_names):
     my_colors = ['b', 'r', 'k', 'c', 'g', 'm', 'y', 'orange']
     fig, ax = plt.subplots(figsize=(7, 4), dpi=100)
     for (i, pcp) in enumerate(portfolio_cash_paths):
         for cp in pcp:
-            ax.plot(cp, c=my_colors[i])
+            ax.plot(cp, c=my_colors[i], label=portfolio_names[i])
     plt.tight_layout()
+    plt.legend()
     plt.show()
