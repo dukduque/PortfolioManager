@@ -176,7 +176,8 @@ def quotien_diff(x):
     Args:
         x (DataSeries): pandas data series
     '''
-    return np.divide(x[1:], x[:-1])
+    y = np.array(x)
+    return pd.Series(y[1:] / y[:-1], index=x[1:].index)
 
 
 def get_returns(data_file, start_date='2000', end_date=dt.datetime.today(), stocks=[]):
