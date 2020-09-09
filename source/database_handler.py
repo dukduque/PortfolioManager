@@ -316,7 +316,7 @@ if __name__ == '__main__':
         out_file = 'close_%s.pkl' % (str_today.split(' ')[0])
         run_update_process(args.db_file, out_file, args.n_proc)
     elif args.a == 'd':
-        download_all_data(args.db_file)
+        download_all_data(args.db_file, n_proc=args.n_proc)
     
     #db = load_database('close_2019-05-26.pkl')
     #ini_time = datetime.datetime(2019,5,20)
