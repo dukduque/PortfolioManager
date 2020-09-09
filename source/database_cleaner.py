@@ -60,3 +60,4 @@ intersec_sp500 = sp500.intersection(bad_stocks_final)
 intersec_r1000 = r1000.intersection(bad_stocks_final)
 
 hola
+hola 2!
