@@ -14,7 +14,7 @@ Setup paths
 '''
 
 import shutil
-from alpha_vantage.timeseries import TimeSeries  # API limits, 5 queries per minute
+#from alpha_vantage.timeseries import TimeSeries  # API limits, 5 queries per minute
 import pandas_datareader.data as web  # yahoo or av-daily, but glichy
 import yfinance as yf  # Works awsome!
 import requests
@@ -30,15 +30,15 @@ import sys
 import os
 path_to_file = os.path.dirname(os.path.realpath(__file__))
 parent_path = os.path.abspath(os.path.join(path_to_file, os.pardir))
-sys.path.append(parent_path)
+sys.path.insert(0, parent_path)
 path_to_data = os.path.abspath(os.path.join(parent_path, 'data'))
 path_to_output = os.path.abspath(os.path.join(parent_path, 'output'))
 
-import source.popt_utils as popt_utils
+from source import popt_utils as popt_utils
 '''
 Setup libraries
 '''
-AV_TS = TimeSeries(key='OSZLY662JJE9SVS1', output_format='pandas')
+#AV_TS = TimeSeries(key='OSZLY662JJE9SVS1', output_format='pandas')
 
 
 def save_sp500_tickers():
@@ -241,7 +241,7 @@ def update_database(db, n_proc=1):
         for c in db.columns:
             try:
                 ndb, status = add_stock(ndb, c, start=ts)
-                if status == False:  # No updated was performed
+                if not status:  # No updated was performed
                     failed_stocks.append(c)
             except Exception as e:
                 print(e)
@@ -251,7 +251,7 @@ def update_database(db, n_proc=1):
     return out_db
 
 
-def download_all_data(DB_file_name, sp500=True, rusell1000=True, n_proc=4):
+def download_all_data(DB_file_name, sp500=True, rusell1000=False, include_bonds=True, n_proc=4):
     # symbols_df = web.get_nasdaq_symbols()
     # symbols_df = symbols_df[symbols_df.ETF == False]
     # symbols_df = symbols_df[symbols_df.ETF == False]
@@ -264,11 +264,15 @@ def download_all_data(DB_file_name, sp500=True, rusell1000=True, n_proc=4):
         stocks.update(sp500_stocks.keys())
     if rusell1000:
         stocks.update(rusell1000_stocks)
+    if include_bonds:
+        # TODO: find a larger list of bonds and/or bonds ETFs
+        stocks.update(["GOVT", "BLV"])
+    
     stocks = list(stocks)
     ini_data = dt.datetime(year=1990, month=1, day=1)
     today = dt.datetime.today()
     data = yf.download(stocks, start=ini_data, end=today, threads=n_proc)
-    close_data = data.Close
+    close_data = data  #.Close
     save_database(close_data, DB_file_name)
     return close_data
     
