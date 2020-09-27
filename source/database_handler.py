@@ -262,34 +262,6 @@ def download_all_data(DB_file_name, sp500=True, rusell1000=False, include_bonds=
     close_data = data  #.Close
     save_database(close_data, DB_file_name)
     return close_data
-    
-    # db1, _ = create_database(sym_list[0], start=1900)
-    # for i in range(1, len(sym_list)):
-    #     try:
-    #         db1 = add_stock(db1, sym_list[i], start='1900')
-    #         if i % 100 == 0:
-    #             cols = len(db1.columns)
-    #             print('Got %i stocks for far' % (cols))
-    #
-    #     except Exception as e:
-    #         print(e)
-    # return db1
-    
-    # data_pool = mp.Pool(n_proc)
-    # stock_list = db.columns.to_list()
-    # n = 100
-    # chunks = [stock_list[i*n:(i+1)*n]
-    #             for i in range((len(stock_list)+n-1)//n)]
-    # for chunk in chunks:
-    #     stock_tasks = itertools.product(chunk, [ts])
-    #     mp_out = data_pool.map(create_database_mp, stock_tasks)
-    #     for s, db_s, status_s in mp_out:
-    #         if status_s:
-    #             ndb = pd.concat((ndb, db_s), axis=1, join='outer')
-    #         else:
-    #             failed_stocks.append(s)
-    
-    #     data_pool.close()
 
 
 def run_update_process(db_file_in='close.pkl', db_file_out='close.pkl', n_proc=4):
@@ -308,20 +280,3 @@ if __name__ == '__main__':
         run_update_process(args.db_file, out_file, args.n_proc)
     elif args.a == 'd':
         download_all_data(args.db_file, n_proc=args.n_proc)
-    
-    #db = load_database('close_2019-05-26.pkl')
-    #ini_time = datetime.datetime(2019,5,20)
-    #new_db = yf.download(db.columns.to_list(), start = ini_time)
-    #db = update_database(db, 20)
-    #save_database(db, 'close_2019_05_26.pkl')
-
-# for stock_symbol in db.columns[:10]:
-#    stock = yf.Ticker(stock_symbol)
-#    s_data = stock.history('5d')
-#    print(s_data.head())
-#
-#
-# if False:
-#
-#    # Get json object with the intraday data and another with  the call's metadata
-#    data, meta_data = ts.get_daily('GOOGL')
