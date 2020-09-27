@@ -25,7 +25,7 @@ def backtest(portfolio, test_data):
         test_data (DataFrame): a dataframe of stock returns.
     '''
     stocks = portfolio[portfolio.qty > 0].index
-    data = test_data[stocks]
+    data = test_data.loc[:, test_data.columns.isin(stocks)]
     qtys = portfolio[portfolio.qty > 0].qty
     
     cash_ini = portfolio.position.sum()
@@ -42,9 +42,10 @@ def backtest(portfolio, test_data):
     return cash_end, cash_path
 
 
+# TODO: Change backtest to require  start and end days
 def run_backtest(portfolio, stock_prices, start, end, test_length=1, plot=False):
     stocks = portfolio[portfolio.position > 0].index
-    stock_data = stock_prices[stocks]
+    stock_data = stock_prices.loc[:, stock_prices.columns.isin(stocks)]
     
     date_diff = end - start
     n_test = np.maximum(1, int(date_diff.days / (test_length * 365)))
@@ -64,10 +65,11 @@ def run_backtest(portfolio, stock_prices, start, end, test_length=1, plot=False)
 
 def plot_backtests(portfolio_cash_paths, portfolio_names):
     my_colors = ['b', 'r', 'k', 'c', 'g', 'm', 'y', 'orange']
+    cmap = plt.cm.get_cmap('hsv', len(portfolio_cash_paths) + 1)
     fig, ax = plt.subplots(figsize=(7, 4), dpi=100)
     for (i, pcp) in enumerate(portfolio_cash_paths):
         for cp in pcp:
-            ax.plot(cp, c=my_colors[i], label=portfolio_names[i])
+            ax.plot(cp, c=cmap(i), label=portfolio_names[i])
     plt.tight_layout()
     plt.legend()
     plt.show()
