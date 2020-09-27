@@ -13,7 +13,7 @@ import pandas as pd
 import numpy as np
 import backtest as bt
 import database_handler as dbh
-from opt_tools import cvar_model_pulp
+from opt_tools import cvar_model_pulp, cvar_model_ortools
 path_to_file = os.path.dirname(os.path.realpath(__file__))
 parent_path = os.path.abspath(os.path.join(path_to_file, os.pardir))
 sys.path.append(parent_path)
@@ -46,7 +46,8 @@ price = db.iloc[-1]  # Last row is the current price
 print('Buy date: ', db.index.values[-1])
 n_stocks = len(db_r.columns)
 sp500_benchmark = pd.Series(data=np.ones(n_stocks) / n_stocks, index=db_r.columns)
-opt_model = cvar_model_pulp(data, price, budget=ini_capital, fractional=False)
+# opt_model = cvar_model_pulp(data, price, budget=ini_capital, fractional=False)
+opt_model = cvar_model_ortools(data, price, budget=ini_capital, fractional=False)
 '''
 Solve parametricly in \beta
 '''
@@ -79,14 +80,13 @@ for (p, ps) in zip(portfolios, portfolio_stats):
     p2['sector'] = [sp500_stocks[s]['sector'] for s in p.index]
     p2['subsector'] = [sp500_stocks[s]['subsector'] for s in p.index]
     print(p2, ps)
-
+print(portfolio_names)
 import pickle
 out_portfolios = portfolios, portfolio_stats
 pickle.dump(out_portfolios, open('./cvar_portfolio.pkl', 'wb'), pickle.HIGHEST_PROTOCOL)
 
 # Back test
 start_date_test = end_date_train
-
 db = db_all[(db_all.index >= start_date_test) & (db_all.index <= end_date_test)]
 portfolio_paths = []
 for p in portfolios[:]:

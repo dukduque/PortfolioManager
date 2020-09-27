@@ -15,6 +15,7 @@ from itertools import product
 from matplotlib import pyplot as plt
 from pulp import LpProblem, LpVariable, LpMaximize, LpContinuous, LpInteger, lpSum, COIN_CMD
 from pulp.solvers import PULP_CBC_CMD
+from ortools.linear_solver import pywraplp
 
 
 class AbstractModel(ABC):
@@ -23,12 +24,11 @@ class AbstractModel(ABC):
     Attributes:
         m (object): a reference of a model that performs the optimization.
     '''
-
     @abstractmethod
     def __init__(self):
         self.m = None
         pass
-
+    
     @abstractmethod
     def optimize(self):
         pass
@@ -54,14 +54,14 @@ class markowitz_dro_wasserstein(AbstractModel):
         norm_p = m.addVar(lb=0, ub=1, vtype=GRB.CONTINUOUS, name='norm')
         p_SD = m.addVar(lb=0, vtype=GRB.CONTINUOUS, name='p_var')
         m.update()
-
+        
         sqrt_delta = np.sqrt(delta_param)
         m.addConstr((x.sum() == 1), 'portfolio_ctr')
         m.addConstr((quicksum(x[j] * r[j] for j in range(k)) >= alpha_param - sqrt_delta * norm_p), 'return_ctr')
         m.addConstr((p_SD * p_SD >= quicksum(cov[i, j] * x[i] * x[j] for i in range(k) for j in range(k))), 'SD_def')
         objfun = p_SD * p_SD + 2 * p_SD * sqrt_delta * norm_p + delta_param * norm_p * norm_p
         m.setObjective(objfun, GRB.MINIMIZE)
-
+        
         if wasserstein_norm == 1:
             regularizer_norm = 'inf'
             m.addConstrs((norm_p >= x[j] for j in range(k)), 'norm_def')
@@ -74,7 +74,7 @@ class markowitz_dro_wasserstein(AbstractModel):
             m.addConstr((norm_p == (quicksum(x[j] for j in range(k)))), 'norm_def')
         else:
             raise 'wasserstain norm should be 1,2, or inf'
-
+        
         #optimize
         m.optimize()
         x_sol = np.array([x[j].X for j in range(k)])
@@ -124,18 +124,18 @@ class cvar_model(AbstractModel):
         self.x = None
         self.z = None
         self.eta = None
-
+        
         self.r_bar = np.mean(r, axis=0)
         self.cov = np.cov(r, rowvar=False)
-
+        
         n = len(r)  # Number of returns
         stocks = price.index.to_list()
-
+        
         from gurobipy import GRB, Model, quicksum
         m = Model('opt_profolio_cvar')
         m.params.OutputFlag = 0
         #m.params.MIPGap = 0.00001
-
+        
         #Number of shares to by
         varType = GRB.CONTINUOUS if fractional else GRB.INTEGER
         x = m.addVars(stocks, lb=0, ub=budget / price, vtype=varType, name='x')
@@ -143,10 +143,10 @@ class cvar_model(AbstractModel):
         z = m.addVars(n, lb=0, vtype=GRB.CONTINUOUS, name='z')
         #Value at risk
         eta = m.addVar(lb=-GRB.INFINITY, vtype=GRB.CONTINUOUS, name='eta')
-
+        
         #cvar_bound = m.addVar(lb=-GRB.INFINITY, vtype=GRB.CONTINUOUS, name='cvar')
         m.update()
-
+        
         #Portfolio contraint
         m.addConstr((quicksum(price[s] * x[s] for s in stocks) <= budget), 'portfolio_budget')
         #Risk constraint (>= becuase is a loss, i.e., want to bound loss from below)
@@ -158,10 +158,10 @@ class cvar_model(AbstractModel):
         #Objective function
         #m.setObjective(quicksum(self.r_bar[j]*price[j]*x[j] for j in range(k)), GRB.MAXIMIZE)
         exp_return = quicksum(self.r_bar[j] * price[s] * x[s] for (j, s) in enumerate(stocks))
-
+        
         m.setObjective(cvar_beta * exp_return - (1 - cvar_beta) * cvar, GRB.MAXIMIZE)
         m.update()
-
+        
         self.m = m
         self.cvar = cvar
         self.exp_return = exp_return
@@ -174,9 +174,9 @@ class cvar_model(AbstractModel):
         self.stocks = stocks
         self.price = price
         self.n = n
-
+        
         #return self.optimize()
-
+    
     def optimize(self):
         self.m.optimize()
         print('Objective func value:', self.m.ObjVal)
@@ -188,15 +188,15 @@ class cvar_model(AbstractModel):
             'position': x_sol * self.price,
             'allocation': allocation
         })
-
+        
         stats = {}
         stats['mean'] = self.r_bar.dot(allocation)
         stats['std'] = np.sqrt(allocation.dot(self.cov.dot(allocation)))
         stats['VaR'] = -self.eta.X
         stats['CVaR'] = -self.cvar.getValue()
-
+        
         return sol_out, stats
-
+    
     def change_cvar_params(self, cvar_beta=None, cvar_alpha=None, cvar_bound=None):
         self.cvar_bound = cvar_bound if cvar_bound != None else self.cvar_bound
         self.cvar_beta = cvar_beta if cvar_beta != None else self.cvar_beta
@@ -205,16 +205,16 @@ class cvar_model(AbstractModel):
         print('CVaR_beta: %5.3f' % (self.cvar_beta))
         print('CVaR_alpha: %5.3f' % (self.cvar_alpha))
         print('CVaR_bound: %5.3f' % (self.cvar_bound))
-
-        if cvar_bound != None or cvar_bound != None:
+        
+        if cvar_bound is not None or cvar_bound is not None:
             self.m.remove(self.m.getConstrByName('cvar_ctr'))
             self.cvar = self.eta + (1.0 / (self.n * (1 - cvar_alpha))) * self.z.sum()
             self.m.addConstr((-self.cvar >= self.cvar_bound), 'cvar_ctr')
             self.m.setObjective(self.cvar_beta * self.exp_return - (1 - cvar_beta) * self.cvar, GRB.MAXIMIZE)
-
-        if cvar_beta != None:
+        
+        if cvar_beta is not None:
             self.m.setObjective(self.cvar_beta * self.exp_return - (1 - cvar_beta) * self.cvar, GRB.MAXIMIZE)
-
+        
         return self.optimize()
 
 
@@ -256,44 +256,44 @@ class cvar_model_pulp(AbstractModel):
         self.x = None
         self.z = None
         self.eta = None
-
+        
         self.r_bar = np.mean(r, axis=0)
         self.cov = np.cov(r, rowvar=False)
-
+        
         n = len(r)  # Number of returns
         stocks = price.index.to_list()
         m = LpProblem(name='cvar_model', sense=LpMaximize)
-
+        
         # Number of shares to by
         varType = LpContinuous if fractional else LpInteger
         x = LpVariable.dicts(name='x', indexs=stocks, lowBound=0, upBound=np.max(budget / price), cat=varType)
-
+        
         # Auxiliary variable to compute shortfall in cvar
         z = LpVariable.dicts(name='z', indexs=range(n), lowBound=0, cat=LpContinuous)
-
+        
         # Value at risk
         eta = LpVariable(name='eta', cat=LpContinuous)
-
+        
         # cvar_bound = m.addVar(lb=-GRB.INFINITY, vtype=GRB.CONTINUOUS, name='cvar')
-
+        
         # Portfolio contraint
         m += lpSum([price[s] * x[s] for s in stocks]) <= budget, 'portfolio_budget'
-
+        
         # Risk constraint (>= becuase is a loss, i.e., want to bound loss from below)
         cvar = eta + (1.0 / (n * (1 - cvar_alpha))) * lpSum(z)
         m += -cvar >= cvar_bound, 'cvar_ctr'
-
+        
         # CVaR linearlization
         for i in range(n):
             m += z[i] >= lpSum(
                 (-(r[i, j]) * price[s] * x[s] for (j, s) in enumerate(stocks))) - eta, 'cvar_linear_%i' % (i)
-
+        
         # Objective function
         # m.setObjective(quicksum(self.r_bar[j]*price[j]*x[j] for j in range(k)), GRB.MAXIMIZE)
         exp_return = lpSum([self.r_bar[j] * price[s] * x[s] for (j, s) in enumerate(stocks)])
-
+        
         m += cvar_beta * exp_return - (1 - cvar_beta) * cvar
-
+        
         self.m = m
         self.cvar = cvar
         self.exp_return = exp_return
@@ -306,9 +306,9 @@ class cvar_model_pulp(AbstractModel):
         self.stocks = stocks
         self.price = price
         self.n = n
-
+        
         #return self.optimize()
-
+    
     def optimize(self, mip_gap=0.001):
         cbc_solver = PULP_CBC_CMD(msg=1, fracGap=mip_gap)
         cbc_solver.solve(self.m)
@@ -322,15 +322,15 @@ class cvar_model_pulp(AbstractModel):
             'allocation': allocation,
             'side': 'buy'
         })
-
+        
         stats = {}
         stats['mean'] = self.r_bar.dot(allocation)
         stats['std'] = np.sqrt(allocation.dot(self.cov.dot(allocation)))
         stats['VaR'] = -self.eta.value()
         stats['CVaR'] = -self.cvar.value()
-
+        
         return sol_out, stats
-
+    
     def change_cvar_params(self, cvar_beta=None, cvar_alpha=None, cvar_bound=None):
         self.cvar_bound = cvar_bound if cvar_bound is not None else self.cvar_bound
         self.cvar_beta = cvar_beta if cvar_beta is not None else self.cvar_beta
@@ -339,15 +339,121 @@ class cvar_model_pulp(AbstractModel):
         print('CVaR_beta: %5.3f' % (self.cvar_beta))
         print('CVaR_alpha: %5.3f' % (self.cvar_alpha))
         print('CVaR_bound: %5.3f' % (self.cvar_bound))
-
+        
         if cvar_bound is not None or cvar_alpha is not None:
             self.cvar = self.eta + (1.0 / (self.n * (1 - self.cvar_alpha))) * lpSum(self.z)
             self.m.constraints['cvar_ctr'] = -self.cvar >= self.cvar_bound
             self.m.objective = self.cvar_beta * self.exp_return - (1 - self.cvar_beta) * self.cvar
-
+        
         if cvar_beta is not None:
             self.m.objective = self.cvar_beta * self.exp_return - (1 - self.cvar_beta) * self.cvar
+        
+        return self.optimize()
 
+
+class cvar_model_ortools(AbstractModel):
+    def __init__(self, r, price, budget, cvar_alpha=0.95, cvar_beta=0.5, cvar_bound=0, fractional=True):
+        
+        # Data prep
+        self.r_bar = np.mean(r, axis=0)
+        self.cov = np.cov(r, rowvar=False)
+        n = len(r)  # Number of returns
+        stocks = price.index.to_list()
+        
+        solver = pywraplp.Solver.CreateSolver('cvar_model', 'CBC')
+        
+        # Number of shares to buy from each stock
+        x = {}
+        if fractional:
+            for s in stocks:
+                x[s] = solver.NumVar(0.0, np.max(budget / price), f'x{s}')
+        else:
+            for s in stocks:
+                x[s] = solver.IntVar(0.0, np.max(budget / price), f'x{s}')
+        
+        # Auxiliary variable to compute shortfall in cvar
+        z = {}
+        for j in range(n):
+            z[j] = solver.NumVar(0.0, solver.infinity(), f'z{j}')
+        
+        # Value at risk
+        eta = solver.NumVar(-solver.infinity(), solver.infinity(), 'eta')
+        
+        # Portfolio contraint
+        solver.Add(sum(price[s] * x[s] for s in stocks) <= budget)
+        
+        # Risk constraint (>= becuase is a loss, i.e., want to bound loss from below)
+        cvar = eta + (1.0 / (n * (1 - cvar_alpha))) * sum(z[i] for i in range(n))
+        #m += -cvar >= cvar_bound, 'cvar_ctr'
+        
+        # CVaR linearlization
+        for i in range(n):
+            solver.Add(z[i] >= sum((-(r[i, j]) * price[s] * x[s] for (j, s) in enumerate(stocks))) - eta)
+        
+        # Objective function
+        
+        exp_return = sum(self.r_bar[j] * price[s] * x[s] for (j, s) in enumerate(stocks))
+        solver.Maximize(cvar_beta * exp_return - (1 - cvar_beta) * cvar)
+        
+        self.solver = solver
+        self.cvar = cvar
+        self.exp_return = exp_return
+        self.x = x
+        self.z = z
+        self.eta = eta
+        self.cvar_bound = cvar_bound
+        self.cvar_beta = cvar_beta
+        self.cvar_alpha = cvar_alpha
+        self.stocks = stocks
+        self.price = price
+        self.n = n
+    
+    def optimize(self, mip_gap=0.001):
+        # self.solver.parameters.RELATIVE_MIP_GAP = 1.0
+        # print('Param changed ', param_change)
+        # self.solver.EnableOutput()
+        # self.solver.set_time_limit(3000)
+        #        pywraplp.MPSolverParameters.SetDoubleParam(param=pywraplp.MPSolverParameters.RELATIVE_MIP_GAP, value=1)
+        p1 = pywraplp.MPSolverParameters()
+        p1.SetDoubleParam(p1.RELATIVE_MIP_GAP, 0.01)
+        self.solver.Solve(p1)
+        print('Objective func value:', self.solver.Objective().Value())
+        x_sol = np.array([self.x[s].solution_value() for s in self.stocks])
+        allocation = x_sol * self.price / np.sum(self.price * x_sol)
+        sol_out = pd.DataFrame({
+            'price': self.price,
+            'qty': x_sol,
+            'position': x_sol * self.price,
+            'allocation': allocation,
+            'side': 'buy'
+        })
+        
+        stats = {}
+        stats['mean'] = self.r_bar.dot(allocation)
+        stats['std'] = np.sqrt(allocation.dot(self.cov.dot(allocation)))
+        stats['VaR'] = -self.eta.solution_value()
+        stats['CVaR'] = -self.cvar.solution_value()
+        
+        return sol_out, stats
+    
+    def change_cvar_params(self, cvar_beta=None, cvar_alpha=None, cvar_bound=None):
+        self.cvar_bound = cvar_bound if cvar_bound is not None else self.cvar_bound
+        self.cvar_beta = cvar_beta if cvar_beta is not None else self.cvar_beta
+        self.cvar_alpha = cvar_alpha if cvar_alpha is not None else self.cvar_alpha
+        print('Changing CVaR parameters:')
+        print('CVaR_beta: %5.3f' % (self.cvar_beta))
+        print('CVaR_alpha: %5.3f' % (self.cvar_alpha))
+        print('CVaR_bound: %5.3f' % (self.cvar_bound))
+        
+        if cvar_bound is not None or cvar_alpha is not None:
+            self.cvar = self.eta + (1.0 / (self.n * (1 - self.cvar_alpha))) * sum(self.z[i] for i in range(self.n))
+            # self.m.constraints['cvar_ctr'] = -self.cvar >= self.cvar_bound
+            self.solver.Maximize(self.cvar_beta * self.exp_return - (1 - self.cvar_beta) * self.cvar)
+            self.m.objective = self.cvar_beta * self.exp_return - (1 - self.cvar_beta) * self.cvar
+        
+        if cvar_beta is not None:
+            self.solver.Maximize(self.cvar_beta * self.exp_return - (1 - self.cvar_beta) * self.cvar)
+        
         return self.optimize()
 
 
@@ -355,7 +461,6 @@ class ssd_model_pulp(AbstractModel):
     '''
     Model based on second order stochastic dominance
     '''
-
     def __init__(self, returns, price, budget, benchmark, fractional=True):
         '''
         Constructor of an SSD model
@@ -370,33 +475,33 @@ class ssd_model_pulp(AbstractModel):
         self.x = None
         self.z = None
         self.ssd = None
-
+        
         r = np.array(returns)
         self.r_bar = np.mean(r, axis=0)
         self.cov = np.cov(r, rowvar=False)
-
+        
         benchmark_positions = np.array(benchmark) * budget
         Y = np.dot(r, benchmark_positions)  # Distribution of the benchmark
-        Y = np.percentile(Y, q=[1,5,10,20,30,40,50,60])  # [i * 1 for i in range(1, 101)])
+        Y = np.percentile(Y, q=[1, 5, 10, 20, 30, 40, 50, 60])  # [i * 1 for i in range(1, 101)])
         Y.sort()
         print(Y)
-
+        
         nY = len(Y)  # Number of returns
         n = len(r)  # Number of returns
         stocks = price.index.to_list()
         m = LpProblem(name='SSD_model', sense=LpMaximize)
-
+        
         # Number of shares to by
         varType = LpContinuous if fractional else LpInteger
         x = LpVariable.dicts(name='x', indexs=stocks, lowBound=0, upBound=np.max(budget / price), cat=varType)
-
+        
         # Auxiliary variable to compute shortfall in SSD
         z_index = list(product(range(nY), range(n)))
         z = LpVariable.dicts(name='z', indexs=z_index, lowBound=0, cat=LpContinuous)
-
+        
         # Slack variable of the SSD constraint
         ssd = LpVariable.dicts(name='s', indexs=range(nY), cat=LpContinuous)
-
+        
         # Min max variable
         min_ssd = LpVariable(name='s', cat=LpContinuous)
         print('Done with vars')
@@ -411,13 +516,13 @@ class ssd_model_pulp(AbstractModel):
             ij_counter += 1
             if ij_counter % 1000 == 0:
                 print(ij_counter, '  at ', str((i, j)))
-
+        
         print('Finished SSD ctrs: ', len(z_index))
         for i in range(nY):
             exp_Y_shortfall_i = sum(np.maximum(0, Y[i] - Y[j]) for j in range(nY)) / nY
             m += ssd[i] == exp_Y_shortfall_i - (lpSum(z[i, j] for j in range(n)) / n), 'ssd_slack_%i' % (i)
             m += min_ssd <= ssd[i], 'min_max_ctr_%i' % (i)
-
+        
         m += min_ssd  # pSum(ssd)  # min_ssd
         print('Done model')
         self.m = m
@@ -427,12 +532,12 @@ class ssd_model_pulp(AbstractModel):
         self.stocks = stocks
         self.price = price
         self.n = n
-
+        
         self.Y = np.dot(r, benchmark_positions)  # Distribution of the benchmark
         self.r = r
-
+        
         # return self.optimize()
-
+    
     def optimize(self, mip_gap=0.01):
         cbc_solver = PULP_CBC_CMD(msg=1, fracGap=mip_gap, maxSeconds=300)
         cbc_solver.solve(self.m)
@@ -447,11 +552,11 @@ class ssd_model_pulp(AbstractModel):
             'allocation': allocation,
             'side': 'buy'
         })
-
+        
         stats = {}
         stats['mean'] = self.r_bar.dot(allocation)
         stats['std'] = np.sqrt(allocation.dot(self.cov.dot(allocation)))
-
+        
         Y = self.Y
         X = self.r.dot(x_sol * self.price)
         plt.hist(X, bins=30, color='b', alpha=0.9)
