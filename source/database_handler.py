@@ -14,7 +14,6 @@ Setup paths
 '''
 
 import shutil
-from alpha_vantage.timeseries import TimeSeries  # API limits, 5 queries per minute
 import pandas_datareader.data as web  # yahoo or av-daily, but glichy
 import yfinance as yf  # Works awsome!
 import requests
@@ -38,7 +37,6 @@ import source.popt_utils as popt_utils
 '''
 Setup libraries
 '''
-AV_TS = TimeSeries(key='OSZLY662JJE9SVS1', output_format='pandas')
 
 
 def save_sp500_tickers():
@@ -129,13 +127,6 @@ def create_database(stock_symbol='GOOGLE', start=None, end=None):
     print(stock_symbol, start, end)
     
     try:
-        #        db = web.DataReader(stock_symbol, "av-daily", start=start ,end=end, access_key='OSZLY662JJE9SVS1')
-        #        db['date'] =  [dt.datetime.strptime(d, '%Y-%m-%d') for d in db.index]
-        #        db = db.set_index('date')
-        #        db = db.close
-        
-        #        db = web.DataReader(stock_symbol, 'yahoo', start=start, end=end)
-        #        db = db.Close
         
         stock = yf.Ticker(stock_symbol)
         db = stock.history(start=start, end=end)
@@ -180,7 +171,7 @@ def quotien_diff(x):
     return pd.Series(y[1:] / y[:-1], index=x[1:].index)
 
 
-def get_returns(data_file, start_date='2000', end_date=dt.datetime.today(), stocks=[]):
+def get_returns(data_file, start_date='2000', end_date=dt.datetime.today(), stocks=[], outlier_return=10):
     '''
     Computes the returns for stocks in the data file from
     a given year. All prices should be avaialbe to consider
@@ -201,15 +192,11 @@ def get_returns(data_file, start_date='2000', end_date=dt.datetime.today(), stoc
     db = db.dropna(axis=0, how='all')
     db = db.dropna(axis=1)
     db_r = db.apply(quotien_diff, axis=0)  # compute returns
-    db_r = db_r[db_r < 10.0].dropna(axis=1)  # Filter outliers
+    db_r = db_r[db_r < outlier_return].dropna(axis=1)  # Filter outliers
     db = db.filter(db_r.columns, axis=1)
     db = db.filter(db_r.index, axis=0)
     
     return db, db_r
-
-
-def cov_estimation():
-    pass
 
 
 def update_database(db, n_proc=1):

@@ -7,27 +7,34 @@ Setup paths
 '''
 import sys
 import os
+print(sys.version)
 import datetime as dt
 import pandas as pd
 import numpy as np
-
 import backtest as bt
 import database_handler as dbh
 from opt_tools import cvar_model_pulp
 path_to_file = os.path.dirname(os.path.realpath(__file__))
 parent_path = os.path.abspath(os.path.join(path_to_file, os.pardir))
 sys.path.append(parent_path)
-file_name = 'close_2020-08-01.pkl'
-start_date = dt.datetime(2018, 6, 20)
+file_name = 'close_2020-09-07.pkl'
+start_date = dt.datetime(2018, 6, 20)  #Initial date for the training period
+end_date_train = dt.datetime(2019, 9, 7)  #Final date for the training period
+end_date_test = dt.datetime(2020, 9, 4)  #Final date for the backtesting period
+outlier_return = 10  #Return threshold to eliminate outliters; a 10 means 1,000% return on a single day
+ini_capital = 1_000  #Initial capital available to be invested
+
 sp500 = dbh.yf.Ticker("^GSPC")  # Ticker
 sp500history = sp500.history(period='max', interval='1d')['Close']
 sp500history = sp500history[sp500history.index >= start_date]
 sp500_stocks = dbh.save_sp500_tickers()
 sp500_stocks_tickers = list(sp500_stocks.keys())
-db_all, _ = dbh.get_returns(data_file=file_name, start_date=start_date, stocks=sp500_stocks_tickers)
+db_all, _ = dbh.get_returns(data_file=file_name,
+                            start_date=start_date,
+                            stocks=sp500_stocks_tickers,
+                            outlier_return=outlier_return)
 
 # Train set
-end_date_train = dt.datetime(2020, 7, 15)
 stock_universe = list(db_all.columns)
 db, db_r = dbh.get_returns(data_file=file_name, start_date=start_date, end_date=end_date_train, stocks=stock_universe)
 # ['ABC','MSFT', 'AMZN', 'GOOGL', 'GE', 'F', 'MMM', 'ATVI'])
@@ -35,7 +42,6 @@ data = np.array(db_r)
 '''
 Create model with default parameters
 '''
-ini_capital = 1_000
 price = db.iloc[-1]  # Last row is the current price
 print('Buy date: ', db.index.values[-1])
 n_stocks = len(db_r.columns)
@@ -47,7 +53,7 @@ Solve parametricly in \beta
 portfolios = []
 portfolio_stats = []
 portfolio_names = []
-for cvar_beta in [0.8]:  # [0.3, 0.5, 0.7, 0.9, 0.99]:
+for cvar_beta in [0.3, 0.5, 0.99]:  # [0.3, 0.5, 0.7, 0.9, 0.99]:
     cvar_sol1, cvar_stats1 = opt_model.change_cvar_params(cvar_beta=cvar_beta)
     portfolios.append(cvar_sol1[cvar_sol1.qty > 0])
     portfolio_stats.append(cvar_stats1)
@@ -80,7 +86,7 @@ pickle.dump(out_portfolios, open('./cvar_portfolio.pkl', 'wb'), pickle.HIGHEST_P
 
 # Back test
 start_date_test = end_date_train
-end_date_test = dt.datetime(2020, 7, 31)
+
 db = db_all[(db_all.index >= start_date_test) & (db_all.index <= end_date_test)]
 portfolio_paths = []
 for p in portfolios[:]:
@@ -91,22 +97,3 @@ factor = ini_capital / sp500history[0]
 sp500history = factor * sp500history
 # portfolio_paths.append([sp500history])
 bt.plot_backtests(portfolio_paths, portfolio_names)
-'''
-# Gurobi implmentation
-cvar_gurobi = cvar_model(data, price, budget=10000, fractional=False)
-gurobi_portfolio, gurobi_stats = cvar_gurobi.optimize()
-
-portfolios = []
-portfolio_stats = []
-for cvar_beta in [0.5,0.9,0.99]:
-    cvar_sol1, cvar_stats1 = cvar_mod.change_cvar_params(cvar_beta=cvar_beta)
-    portfolios.append(cvar_sol1[cvar_sol1.stock>0])
-    portfolio_stats.append(cvar_stats1)
-
-portfolio_paths = []
-for p in portfolios[:2]:
-    portfolio_paths.append(bt.run_backtest(p, db, dt.datetime(2013,1,1), dt.datetime(2019,5,1), 6))
-
-bt.plot_backtests(portfolio_paths)
-
-'''
