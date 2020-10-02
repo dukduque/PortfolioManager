@@ -14,7 +14,6 @@ Setup paths
 '''
 
 import shutil
-#from alpha_vantage.timeseries import TimeSeries  # API limits, 5 queries per minute
 import pandas_datareader.data as web  # yahoo or av-daily, but glichy
 import yfinance as yf  # Works awsome!
 import requests
@@ -38,7 +37,6 @@ from source import popt_utils as popt_utils
 '''
 Setup libraries
 '''
-#AV_TS = TimeSeries(key='OSZLY662JJE9SVS1', output_format='pandas')
 
 
 def save_sp500_tickers():
@@ -129,13 +127,6 @@ def create_database(stock_symbol='GOOGLE', start=None, end=None):
     print(stock_symbol, start, end)
     
     try:
-        #        db = web.DataReader(stock_symbol, "av-daily", start=start ,end=end, access_key='OSZLY662JJE9SVS1')
-        #        db['date'] =  [dt.datetime.strptime(d, '%Y-%m-%d') for d in db.index]
-        #        db = db.set_index('date')
-        #        db = db.close
-        
-        #        db = web.DataReader(stock_symbol, 'yahoo', start=start, end=end)
-        #        db = db.Close
         
         stock = yf.Ticker(stock_symbol)
         tomorow = datetime.datetime.today() + datetime.timedelta(days=1)
@@ -183,7 +174,7 @@ def quotien_diff(x):
     return pd.Series(y[1:] / y[:-1], index=x[1:].index)
 
 
-def get_returns(data_file, start_date='2000', end_date=dt.datetime.today(), stocks=[]):
+def get_returns(data_file, start_date='2000', end_date=dt.datetime.today(), stocks=[], outlier_return=10):
     '''
     Computes the returns for stocks in the data file from
     a given year. All prices should be avaialbe to consider
@@ -204,15 +195,11 @@ def get_returns(data_file, start_date='2000', end_date=dt.datetime.today(), stoc
     db = db.dropna(axis=0, how='all')
     db = db.dropna(axis=1)
     db_r = db.apply(quotien_diff, axis=0)  # compute returns
-    db_r = db_r[db_r < 10.0].dropna(axis=1)  # Filter outliers
+    db_r = db_r[db_r < outlier_return].dropna(axis=1)  # Filter outliers
     db = db.filter(db_r.columns, axis=1)
     db = db.filter(db_r.index, axis=0)
     
     return db, db_r
-
-
-def cov_estimation():
-    pass
 
 
 def update_database(db, n_proc=1):
@@ -278,34 +265,6 @@ def download_all_data(DB_file_name, sp500=True, rusell1000=False, include_bonds=
     close_data = data.Close
     save_database(close_data, DB_file_name)
     return close_data
-    
-    # db1, _ = create_database(sym_list[0], start=1900)
-    # for i in range(1, len(sym_list)):
-    #     try:
-    #         db1 = add_stock(db1, sym_list[i], start='1900')
-    #         if i % 100 == 0:
-    #             cols = len(db1.columns)
-    #             print('Got %i stocks for far' % (cols))
-    #
-    #     except Exception as e:
-    #         print(e)
-    # return db1
-    
-    # data_pool = mp.Pool(n_proc)
-    # stock_list = db.columns.to_list()
-    # n = 100
-    # chunks = [stock_list[i*n:(i+1)*n]
-    #             for i in range((len(stock_list)+n-1)//n)]
-    # for chunk in chunks:
-    #     stock_tasks = itertools.product(chunk, [ts])
-    #     mp_out = data_pool.map(create_database_mp, stock_tasks)
-    #     for s, db_s, status_s in mp_out:
-    #         if status_s:
-    #             ndb = pd.concat((ndb, db_s), axis=1, join='outer')
-    #         else:
-    #             failed_stocks.append(s)
-    
-    #     data_pool.close()
 
 
 def run_update_process(db_file_in='close.pkl', db_file_out='close.pkl', n_proc=4):
@@ -324,20 +283,3 @@ if __name__ == '__main__':
         run_update_process(args.db_file, out_file, args.n_proc)
     elif args.a == 'd':
         download_all_data(args.db_file, n_proc=args.n_proc)
-    
-    #db = load_database('close_2019-05-26.pkl')
-    #ini_time = datetime.datetime(2019,5,20)
-    #new_db = yf.download(db.columns.to_list(), start = ini_time)
-    #db = update_database(db, 20)
-    #save_database(db, 'close_2019_05_26.pkl')
-
-# for stock_symbol in db.columns[:10]:
-#    stock = yf.Ticker(stock_symbol)
-#    s_data = stock.history('5d')
-#    print(s_data.head())
-#
-#
-# if False:
-#
-#    # Get json object with the intraday data and another with  the call's metadata
-#    data, meta_data = ts.get_daily('GOOGL')
