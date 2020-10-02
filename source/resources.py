@@ -57,7 +57,7 @@ class Portfolio:
     def __str__(self):
         p_string = ''
         for a in self._data:
-            p_string += f'{a:8s}{self._data[a]["qty"]}'
+            p_string += f'{a:8s}{self._data[a]["qty"]}\n'
         return p_string
     
     def __repr__(self):
@@ -193,8 +193,15 @@ if __name__ == '__main__':
     dd_account.update_account(dt.datetime(2020, 9, 14, 9, 35), [
         Order('HRL', 1, 49.95, OPERATION_BUY),
         Order('NEM', 2, 66.54, OPERATION_BUY),
+        Order('SEE', 1, 39.49, OPERATION_BUY),
+        Order('MRO', 2, 4.47, OPERATION_BUY),
+        Order('WMT', 2, 136.14, OPERATION_BUY),
+        Order('CTXS', 1, 134.02, OPERATION_BUY),
+        Order('VS', 1, 60.02, OPERATION_BUY),
+        Order('KR', 3, 33.68, OPERATION_BUY),
+        Order('HLT', 1, 88.18, OPERATION_BUY),
+        Order('SJM', 1, 113.49, OPERATION_BUY),
     ])
-    dd_account.withdraw(dt.datetime.now(), 900)
     print(dd_account.cash_onhand)
     print(dd_account.portfolios)
     ##save_account(dd_account)

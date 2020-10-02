@@ -18,7 +18,7 @@ path_to_file = os.path.dirname(os.path.realpath(__file__))
 parent_path = os.path.abspath(os.path.join(path_to_file, os.pardir))
 sys.path.append(parent_path)
 file_name = 'close.pkl'
-start_date = dt.datetime(2016, 6, 20)
+start_date = dt.datetime(2019, 9, 26)
 sp500 = dbh.yf.Ticker("^GSPC")  # Ticker
 sp500history = sp500.history(period='max', interval='1d')['Close']
 sp500history = sp500history[sp500history.index >= start_date]
@@ -27,7 +27,7 @@ sp500_stocks_tickers = list(sp500_stocks.keys())
 db_all, _ = dbh.get_returns(data_file=file_name, start_date=start_date, stocks=sp500_stocks_tickers)
 
 # Train set
-end_date_train = dt.datetime(2019, 5, 24)
+end_date_train = dt.datetime(2020, 9, 14)
 stock_universe = list(db_all.columns)
 db, db_r = dbh.get_returns(data_file=file_name, start_date=start_date, end_date=end_date_train, stocks=stock_universe)
 # ['ABC','MSFT', 'AMZN', 'GOOGL', 'GE', 'F', 'MMM', 'ATVI'])
@@ -48,7 +48,7 @@ Solve parametricly in \beta
 portfolios = []
 portfolio_stats = []
 portfolio_names = []
-for cvar_beta in [0.5]:  # [0.3, 0.5, 0.7, 0.9, 0.99]:
+for cvar_beta in [i / 10 for i in range(1)]:
     cvar_sol1, cvar_stats1 = opt_model.change_cvar_params(cvar_beta=cvar_beta)
     portfolios.append(cvar_sol1[cvar_sol1.qty > 0])
     portfolio_stats.append(cvar_stats1)
@@ -76,12 +76,15 @@ for (p, ps) in zip(portfolios, portfolio_stats):
     print(p2, ps)
 print(portfolio_names)
 import pickle
-out_portfolios = portfolios, portfolio_stats
+out_portfolios = portfolios, portfolio_stats, portfolio_names
 pickle.dump(out_portfolios, open('./cvar_portfolio.pkl', 'wb'), pickle.HIGHEST_PROTOCOL)
 
+if True:  # Run a stored portfolio
+    file = open("cvar_portfolio_DD.pkl", 'rb')
+    portfolios, portfolio_stats = pickle.load(file)
 # Back test
 start_date_test = end_date_train
-end_date_test = dt.datetime(2020, 9, 8)
+end_date_test = dt.datetime(2020, 10, 1)
 db = db_all[(db_all.index >= start_date_test) & (db_all.index <= end_date_test)]
 portfolio_paths = []
 for p in portfolios[:]:
@@ -92,22 +95,3 @@ factor = ini_capital / sp500history[0]
 sp500history = factor * sp500history
 # portfolio_paths.append([sp500history])
 bt.plot_backtests(portfolio_paths, portfolio_names)
-'''
-# Gurobi implmentation
-cvar_gurobi = cvar_model(data, price, budget=10000, fractional=False)
-gurobi_portfolio, gurobi_stats = cvar_gurobi.optimize()
-
-portfolios = []
-portfolio_stats = []
-for cvar_beta in [0.5,0.9,0.99]:
-    cvar_sol1, cvar_stats1 = cvar_mod.change_cvar_params(cvar_beta=cvar_beta)
-    portfolios.append(cvar_sol1[cvar_sol1.stock>0])
-    portfolio_stats.append(cvar_stats1)
-
-portfolio_paths = []
-for p in portfolios[:2]:
-    portfolio_paths.append(bt.run_backtest(p, db, dt.datetime(2013,1,1), dt.datetime(2019,5,1), 6))
-
-bt.plot_backtests(portfolio_paths)
-
-'''

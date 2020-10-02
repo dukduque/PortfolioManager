@@ -121,7 +121,7 @@ def create_database(stock_symbol='GOOGLE', start=None, end=None):
     Args:
         stock_symbol (str): stock symbol to query
         start (str or datetime): start date of the query
-        end (str or datetime): end time of the query
+        end (str or datetime): end time of the query (if None, databes includes today's data)
     Return:
         db (DataFrame): a dataframe with the requested symbol
         status (bool): true if the query was succesfull
@@ -138,7 +138,10 @@ def create_database(stock_symbol='GOOGLE', start=None, end=None):
         #        db = db.Close
         
         stock = yf.Ticker(stock_symbol)
-        db = stock.history(start=start, end=end)
+        tomorow = datetime.datetime.today() + datetime.timedelta(days=1)
+        _end_date = end if end is not None else datetime.datetime.today()
+        #db = stock.history(start=start, end=_end_date)
+        db = yf.download(stock_symbol, start=start, end=end)
         db = db.Close
         
         db = db.loc[~db.index.duplicated(keep='last')]
@@ -218,7 +221,7 @@ def update_database(db, n_proc=1):
     If n_proc > 1, runs a mutiprocess version of
     the function to speedup the colection of data.
     '''
-    ts = db.index[-1]  # get last date in DB
+    ts = db.index[-1]  # get last date in DB  #TODO: what if last date was NaN
     ndb = pd.DataFrame()
     failed_stocks = []
     print('Updating %i stock with %i processors' % (len(db.columns), n_proc))
@@ -269,10 +272,10 @@ def download_all_data(DB_file_name, sp500=True, rusell1000=False, include_bonds=
         stocks.update(["GOVT", "BLV"])
     
     stocks = list(stocks)
-    ini_data = dt.datetime(year=1990, month=1, day=1)
+    ini_data = dt.datetime(year=2000, month=1, day=1)
     today = dt.datetime.today()
     data = yf.download(stocks, start=ini_data, end=today, threads=n_proc)
-    close_data = data  #.Close
+    close_data = data.Close
     save_database(close_data, DB_file_name)
     return close_data
     
@@ -317,7 +320,7 @@ if __name__ == '__main__':
     if args.a == 'u':
         today_ts = datetime.datetime.today()
         str_today = str(today_ts)
-        out_file = 'close_%s.pkl' % (str_today.split(' ')[0])
+        out_file = 'close.pkl'  # % (str_today.split(' ')[0])
         run_update_process(args.db_file, out_file, args.n_proc)
     elif args.a == 'd':
         download_all_data(args.db_file, n_proc=args.n_proc)

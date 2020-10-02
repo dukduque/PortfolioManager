@@ -415,7 +415,7 @@ class cvar_model_ortools(AbstractModel):
         # self.solver.set_time_limit(3000)
         #        pywraplp.MPSolverParameters.SetDoubleParam(param=pywraplp.MPSolverParameters.RELATIVE_MIP_GAP, value=1)
         p1 = pywraplp.MPSolverParameters()
-        p1.SetDoubleParam(p1.RELATIVE_MIP_GAP, 0.01)
+        p1.SetDoubleParam(p1.RELATIVE_MIP_GAP, mip_gap)
         self.solver.Solve(p1)
         print('Objective func value:', self.solver.Objective().Value())
         x_sol = np.array([self.x[s].solution_value() for s in self.stocks])
