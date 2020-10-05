@@ -352,13 +352,24 @@ class cvar_model_pulp(AbstractModel):
 
 
 class cvar_model_ortools(AbstractModel):
-    def __init__(self, r, price, budget, cvar_alpha=0.95, cvar_beta=0.5, cvar_bound=0, fractional=True):
+    def __init__(self,
+                 r,
+                 price,
+                 budget,
+                 current_portfolio=None,
+                 cvar_alpha=0.95,
+                 cvar_beta=0.5,
+                 cvar_bound=0,
+                 portfolio_delta=0,
+                 fractional=True):
         
         # Data prep
         self.r_bar = np.mean(r, axis=0)
         self.cov = np.cov(r, rowvar=False)
         n = len(r)  # Number of returns
         stocks = price.index.to_list()
+        portfolio_value = 0 if current_portfolio is None else sum(price[s] * current_portfolio.get_position(s)
+                                                                  for s in current_portfolio.assets)
         
         solver = pywraplp.Solver.CreateSolver('cvar_model', 'CBC')
         
@@ -379,8 +390,8 @@ class cvar_model_ortools(AbstractModel):
         # Value at risk
         eta = solver.NumVar(-solver.infinity(), solver.infinity(), 'eta')
         
-        # Portfolio contraint
-        solver.Add(sum(price[s] * x[s] for s in stocks) <= budget)
+        # Portfolio budget contraint
+        solver.Add(sum(price[s] * x[s] for s in stocks) <= budget + portfolio_value)
         
         # Risk constraint (>= becuase is a loss, i.e., want to bound loss from below)
         cvar = eta + (1.0 / (n * (1 - cvar_alpha))) * sum(z[i] for i in range(n))
@@ -390,8 +401,17 @@ class cvar_model_ortools(AbstractModel):
         for i in range(n):
             solver.Add(z[i] >= sum((-(r[i, j]) * price[s] * x[s] for (j, s) in enumerate(stocks))) - eta)
         
-        # Objective function
+        # Limit number of rebalancing sell transactions
+        if current_portfolio is not None:
+            delta_x = {}
+            for s in current_portfolio.assets:
+                position_s = current_portfolio.get_position(s)
+                delta_x[s] = solver.NumVar(0.0, position_s, f'delta_x{s}')
+                # solver.Add(x[s] - position_s <= delta_x[s])  # Buy
+                solver.Add(position_s - x[s] <= delta_x[s])  # Sell
+            solver.Add(sum(delta_x[s] for s in current_portfolio.assets) <= portfolio_delta)
         
+        # Objective function
         exp_return = sum(self.r_bar[j] * price[s] * x[s] for (j, s) in enumerate(stocks))
         solver.Maximize(cvar_beta * exp_return - (1 - cvar_beta) * cvar)
         
