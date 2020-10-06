@@ -27,6 +27,8 @@ import numpy as np
 import pandas as pd
 import sys
 import os
+import time
+from pathlib import Path
 path_to_file = os.path.dirname(os.path.realpath(__file__))
 parent_path = os.path.abspath(os.path.join(path_to_file, os.pardir))
 sys.path.insert(0, parent_path)
@@ -54,11 +56,33 @@ def save_sp500_tickers():
         ticker_info['sector'] = row.findAll('td')[3].text.replace('\n', '')
         ticker_info['subsector'] = row.findAll('td')[4].text.replace('\n', '')
         tickers[ticker] = ticker_info
+    for ticker in tickers:
+        _, mkt_cap = get_market_cap(ticker)
+        tickers[ticker]['market_cap'] = mkt_cap
     path_to_file = os.path.join(path_to_data, "sp500tickers.pickle")
     with open(path_to_file, "wb") as f:
         pickle.dump(tickers, f)
-    
-    return tickers
+
+
+def get_market_cap(ticker_str):
+    '''
+    Retrieves the market cap of the ticker given as input. If the ticker information is not available, returns zero.
+    '''
+    ticker = yf.Ticker(ticker_str)
+    print(f'Getting {ticker_str} market cap...')
+    try:
+        time.sleep(np.random.uniform(0, 500) / 1000)
+        return (ticker_str, ticker.info['marketCap'])
+    except Exception as e:
+        print(e)
+        return (ticker_str, 0.0)
+
+
+def get_sp500_tickers():
+    path_to_file = Path(os.path.join(path_to_data, "sp500.pkl"))
+    if not path_to_file.exists:
+        save_sp500_tickers()
+    return pickle.load(path_to_file.open('rb'))
 
 
 def save_rusell1000_tickers():
@@ -283,3 +307,5 @@ if __name__ == '__main__':
         run_update_process(args.db_file, out_file, args.n_proc)
     elif args.a == 'd':
         download_all_data(args.db_file, n_proc=args.n_proc)
+    elif args.a == 'sp500':
+        save_sp500_tickers()

@@ -14,7 +14,7 @@ import argparse
 
 def dh_parse_arguments():
     parser = argparse.ArgumentParser("Datahandler parser")
-    parser.add_argument("-a", choices=['u', 'd'], default='u', help='Action to perform')
+    parser.add_argument("-a", choices=['u', 'd', 'sp500'], default='u', help='Action to perform')
     parser.add_argument("-db_file", type=str, default='close.pkl', help='File name of the database to update')
     parser.add_argument("-n_proc", default=4, type=int, help='Number of processor to use')
     args = parser.parse_args()

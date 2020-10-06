@@ -7,6 +7,7 @@ Setup paths
 '''
 import sys
 import os
+import pickle
 print(sys.version)
 import datetime as dt
 import pandas as pd
@@ -17,17 +18,17 @@ from opt_tools import cvar_model_pulp, cvar_model_ortools
 path_to_file = os.path.dirname(os.path.realpath(__file__))
 parent_path = os.path.abspath(os.path.join(path_to_file, os.pardir))
 sys.path.append(parent_path)
-file_name = 'close_2020-09-07.pkl'
-start_date = dt.datetime(2018, 6, 20)  #Initial date for the training period
-end_date_train = dt.datetime(2019, 9, 7)  #Final date for the training period
-end_date_test = dt.datetime(2020, 9, 4)  #Final date for the backtesting period
+file_name = 'close.pkl'
+start_date = dt.datetime(2019, 6, 20)  #Initial date for the training period
+end_date_train = dt.datetime(2020, 9, 13)  #Final date for the training period
+end_date_test = dt.datetime(2021, 9, 4)  #Final date for the backtesting period
 outlier_return = 10  #Return threshold to eliminate outliters; a 10 means 1,000% return on a single day
 ini_capital = 1_000  #Initial capital available to be invested
 
 sp500 = dbh.yf.Ticker("^GSPC")  # Ticker
 sp500history = sp500.history(period='max', interval='1d')['Close']
 sp500history = sp500history[sp500history.index >= start_date]
-sp500_stocks = dbh.save_sp500_tickers()
+sp500_stocks = dbh.get_sp500_tickers()
 sp500_stocks_tickers = list(sp500_stocks.keys())
 db_all, _ = dbh.get_returns(data_file=file_name,
                             start_date=start_date,
@@ -54,14 +55,15 @@ Solve parametricly in \beta
 portfolios = []
 portfolio_stats = []
 portfolio_names = []
-for cvar_beta in [i / 10 for i in range(1)]:
+for cvar_beta in [0.5]:  #[i / 10 for i in range(1)]:
     cvar_sol1, cvar_stats1 = opt_model.change_cvar_params(cvar_beta=cvar_beta)
     portfolios.append(cvar_sol1[cvar_sol1.qty > 0])
     portfolio_stats.append(cvar_stats1)
     portfolio_names.append(f'cvar_{cvar_beta}')
 
 # SP500 porfolio
-allocation = np.ones(n_stocks) / n_stocks
+sp500_value = sum(sp500_stocks[s]['market_cap'] for s in db_r.columns)
+allocation = np.array([sp500_stocks[s]['market_cap'] for s in db_r.columns]) / sp500_value
 sp500_portfolio = pd.DataFrame({
     'price': price,
     'qty': allocation * ini_capital / price,
@@ -72,7 +74,7 @@ sp500_portfolio = pd.DataFrame({
 portfolios.append(sp500_portfolio)
 stats_sp_500 = {'mean': opt_model.r_bar.dot(allocation), 'std': np.sqrt(allocation.dot(opt_model.cov.dot(allocation)))}
 portfolio_stats.append(stats_sp_500)
-portfolio_names.append(f'SP500')
+portfolio_names.append(f'SP500w')
 
 for (p, ps) in zip(portfolios, portfolio_stats):
     p2 = p.copy()
@@ -81,13 +83,16 @@ for (p, ps) in zip(portfolios, portfolio_stats):
     p2['subsector'] = [sp500_stocks[s]['subsector'] for s in p.index]
     print(p2, ps)
 print(portfolio_names)
-import pickle
+
 out_portfolios = portfolios, portfolio_stats, portfolio_names
 pickle.dump(out_portfolios, open('./cvar_portfolio.pkl', 'wb'), pickle.HIGHEST_PROTOCOL)
 
 if True:  # Run a stored portfolio
     file = open("cvar_portfolio_DD.pkl", 'rb')
-    portfolios, portfolio_stats = pickle.load(file)
+    old_portfolio, old_stats = pickle.load(file)
+    portfolios.extend(old_portfolio)
+    portfolio_stats.extend(old_stats)
+    portfolio_names.extend(['cvar_dd', 'old_sp500'])
 # Back test
 start_date_test = end_date_train
 db = db_all[(db_all.index >= start_date_test) & (db_all.index <= end_date_test)]
