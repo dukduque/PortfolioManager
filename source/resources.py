@@ -108,14 +108,21 @@ class Account:
         self.portfolios = {opening_date: Portfolio.create_empty()}
         self.last_transaction = opening_date
         self.cash_onhand = 0
-        self.abc = -1
+    
+    @property
+    def portfolio(self):
+        '''
+        Most recent portfolio of the account.
+        '''
+        return self.portfolios[self.last_transaction]
     
     def deposit(self, deposit_date, amount):
-        self.cash_flow.append({
+        self.cash_flow = self.cash_flow.append({
             "datetime": deposit_date,
             "amount": amount,
             "type": "deposit",
-        }, ignore_index=True)
+        },
+                                               ignore_index=True)
         self.cash_onhand = self.cash_onhand + amount
     
     def withdraw(self, withdraw_date, amount):
@@ -124,13 +131,14 @@ class Account:
         '''
         if (self.cash_onhand < amount):
             return False
-        self.cash_flow.append({
+        self.cash_flow = self.cash_flow.append({
             "datetime": withdraw_date,
             "amount": amount,
             "type": "withdraw",
-        }, ignore_index=True)
+        },
+                                               ignore_index=True)
         self.cash_onhand = self.cash_onhand - amount
-        return False
+        return True
     
     def update_account(self, transaction_date, orders):
         '''
@@ -147,7 +155,7 @@ class Account:
             self.last_transaction = transaction_date
             self.portfolios[transaction_date] = new_portfolio
             for order in orders:
-                self.cash_flow.append(
+                self.transactions = self.transactions.append(
                     {
                         "ticker": order.ticker,
                         "datetime": transaction_date,
@@ -156,8 +164,15 @@ class Account:
                         "price": order.price,
                     },
                     ignore_index=True)
+                self.cash_onhand -= order.qty * order.price
             return True
         return False
+    
+    def __str__(self):
+        s = f"Holder: {self.holder} - cash onhand: {self.cash_onhand:.2f}\n"
+        s += f"Last transaction: {self.last_transaction}"
+        s += f"Portfolio:\n\t{self.portfolio}"
+        return s
 
 
 def save_account(account):
@@ -165,6 +180,7 @@ def save_account(account):
     path_to_account = accounts_path / account.holder
     if not path_to_account.exists():
         path_to_account.mkdir()
+    # TODO: Add verification step so that accounts don't overwrite themself.
     index_file = path_to_account / 'index.txt'
     with open(index_file, "a") as writer:
         writer.write(backup_name)
@@ -245,23 +261,11 @@ if __name__ == '__main__':
         Order('HLT', 1, 88.18, OPERATION_BUY),
         Order('SJM', 1, 113.49, OPERATION_BUY),
     ])
+    dd_account.deposit(dt.datetime.today(), 1_000)
     save_account(dd_account)
     del dd_account
     '''
     dd_account = load_account("Daniel Duque")
-    dd_account.update_account(dt.datetime(2020, 9, 30, 9, 1), [
-        Order('AAPL', 3, 222.95, OPERATION_BUY),
-    ])
-    #print("begin registration")
-    #register_example(dd_account)
-    #dd_account.example(12312321)
-    #dd_account.hola = "hola"
-    save_account(dd_account)
-    del dd_account
-    dd_account = load_account("Daniel Duque")
-    
-    for p in dd_account.portfolios:
-        print(p.b)
-    print(dd_account.__dict__)
-    
-    ##save_account(dd_account)
+    for (i, v) in dd_account.__dict__.items():
+        print(i)
+        print(v)

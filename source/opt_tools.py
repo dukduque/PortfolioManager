@@ -361,7 +361,9 @@ class cvar_model_ortools(AbstractModel):
                  cvar_beta=0.5,
                  cvar_bound=0,
                  portfolio_delta=0,
-                 fractional=True):
+                 fractional=True,
+                 ignore=[],
+                 must_buy={}):
         
         # Data prep
         self.r_bar = np.mean(r, axis=0)
@@ -375,12 +377,13 @@ class cvar_model_ortools(AbstractModel):
         
         # Number of shares to buy from each stock
         x = {}
-        if fractional:
-            for s in stocks:
-                x[s] = solver.NumVar(0.0, np.max(budget / price), f'x{s}')
-        else:
-            for s in stocks:
-                x[s] = solver.IntVar(0.0, np.max(budget / price), f'x{s}')
+        for s in stocks:
+            x_lb = 0 if s not in must_buy else must_buy[s]
+            x_ub = np.max(budget / price) if s not in ignore else 0
+            if fractional:
+                x[s] = solver.NumVar(x_lb, x_ub, f'x{s}')
+            else:
+                x[s] = solver.IntVar(x_lb, x_ub, f'x{s}')
         
         # Auxiliary variable to compute shortfall in cvar
         z = {}
