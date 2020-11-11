@@ -14,14 +14,14 @@ import numpy as np
 import backtest as bt
 import database_handler as dbh
 from opt_tools import cvar_model_pulp, cvar_model_ortools
-from resources import Portfolio, Account, load_account, generate_orders
+from resources import Portfolio, Account, load_account, generate_orders, save_account, build_account_history
 
 path_to_file = os.path.dirname(os.path.realpath(__file__))
 parent_path = os.path.abspath(os.path.join(path_to_file, os.pardir))
 sys.path.append(parent_path)
 file_name = 'close.pkl'
-start_date = dt.datetime(2020, 1, 20)  #Initial date for the training period
-end_date_train = dt.datetime(2020, 9, 25)  #Final date for the training period
+start_date = dt.datetime(2018, 10, 14)  #Initial date for the training period
+end_date_train = dt.datetime(2020, 10, 14)  #Final date for the training period
 end_date_test = dt.datetime(2021, 9, 4)  #Final date for the backtesting period
 outlier_return = 10  #Return threshold to eliminate outliters; a 10 means 1,000% return on a single day
 ini_capital = 1_000  #Initial capital available to be invested
@@ -50,26 +50,48 @@ n_stocks = len(db_r.columns)
 sp500_benchmark = pd.Series(data=np.ones(n_stocks) / n_stocks, index=db_r.columns)
 # opt_model = cvar_model_pulp(data, price, budget=ini_capital, fractional=False)
 dd_account = load_account("Daniel Duque")
-dd_portfolio = dd_account.portfolios[dd_account.last_transaction]
-print(dd_portfolio)
+base_portfolio = dd_account.portfolio
+print(dd_account)
+
+sp500_portfolios = {}
+sp500_value = sum(sp500_stocks[s]['market_cap'] for s in db_all.columns)
+allocation = np.array([sp500_stocks[s]['market_cap'] for s in db_all.columns]) / sp500_value
+ini_portfolio = Portfolio.create_empty()
+for op_date, op_value in dd_account.operations_history():
+    pandas_date = pd.Timestamp(year=op_date.year, month=op_date.month, day=op_date.day)
+    date_ix = np.where(db_all.index == pandas_date)[0][0]
+    price_on_date = 0.2 * db_all.iloc[date_ix] + 0.8 * db_all.iloc[date_ix - 1]
+    print(price_on_date.head())
+    portfolio_on_date = Portfolio.create_from_vectors(assets=price_on_date.index,
+                                                      qty=allocation * op_value / price_on_date)
+    sp500_portfolios[op_date] = portfolio_on_date + ini_portfolio
+    ini_portfolio = sp500_portfolios[op_date]
+sp500_history = build_account_history(sp500_portfolios, db_all, None)
+build_account_history(dd_account.portfolios, db_all, sp500_history)
+
 opt_model = cvar_model_ortools(data,
                                price,
-                               current_portfolio=dd_portfolio,
+                               current_portfolio=base_portfolio,
                                budget=ini_capital,
                                fractional=False,
-                               portfolio_delta=5)
+                               portfolio_delta=0,
+                               ignore=['TIF'],
+                               must_buy={"AMD": 3})
 '''
-Solve parametricly in \beta
+Solve parametricly in beta
 '''
 portfolios = []
 portfolio_stats = []
 portfolio_names = []
-for cvar_beta in [0.8]:  # [i / 10 for i in range(1)]:
+for cvar_beta in [0.9]:  # [i / 10 for i in range(1)]:
     cvar_sol1, cvar_stats1 = opt_model.change_cvar_params(cvar_beta=cvar_beta)
     portfolios.append(cvar_sol1[cvar_sol1.qty > 0])
     portfolio_stats.append(cvar_stats1)
     portfolio_names.append(f'cvar_{cvar_beta}')
-print(generate_orders(dd_portfolio, Portfolio.create_from_vectors(portfolios[-1].index, portfolios[-1].qty), price))
+orders = generate_orders(base_portfolio, Portfolio.create_from_vectors(portfolios[-1].index, portfolios[-1].qty), price)
+for o in orders:
+    print(o)
+
 # SP500 porfolio
 sp500_value = sum(sp500_stocks[s]['market_cap'] for s in db_r.columns)
 allocation = np.array([sp500_stocks[s]['market_cap'] for s in db_r.columns]) / sp500_value

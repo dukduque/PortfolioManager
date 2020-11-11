@@ -23,7 +23,7 @@ start_date = dt.datetime(2019, 6, 20)  #Initial date for the training period
 end_date_train = dt.datetime(2020, 9, 13)  #Final date for the training period
 end_date_test = dt.datetime(2021, 9, 4)  #Final date for the backtesting period
 outlier_return = 10  #Return threshold to eliminate outliters; a 10 means 1,000% return on a single day
-ini_capital = 1_000  #Initial capital available to be invested
+ini_capital = 2_000  #Initial capital available to be invested
 
 sp500 = dbh.yf.Ticker("^GSPC")  # Ticker
 sp500history = sp500.history(period='max', interval='1d')['Close']
@@ -88,8 +88,8 @@ out_portfolios = portfolios, portfolio_stats, portfolio_names
 pickle.dump(out_portfolios, open('./cvar_portfolio.pkl', 'wb'), pickle.HIGHEST_PROTOCOL)
 
 if True:  # Run a stored portfolio
-    file = open("cvar_portfolio_DD.pkl", 'rb')
-    old_portfolio, old_stats = pickle.load(file)
+    file = open("cvar_portfolio_DD2.pkl", 'rb')
+    old_portfolio, old_stats, _ = pickle.load(file)
     portfolios.extend(old_portfolio)
     portfolio_stats.extend(old_stats)
     portfolio_names.extend(['cvar_dd', 'old_sp500'])
