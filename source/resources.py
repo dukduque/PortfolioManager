@@ -79,6 +79,14 @@ class Portfolio:
     
     def __repr__(self):
         return self.__str__()
+    
+    def __add__(self, other_portfolio):
+        all_assets = list(set(self.assets + other_portfolio.assets))
+        qtys = []
+        for a in all_assets:
+            q = self.get_position(a) + other_portfolio.get_position(a)
+            qtys.append(q)
+        return Portfolio.create_from_vectors(all_assets, qtys)
 
 
 OPERATION_SELL = 'Sell'
@@ -168,6 +176,17 @@ class Account:
             return True
         return False
     
+    def operations_history(self):
+        history = []
+        transactions_copy = self.transactions.copy()
+        transactions_copy['value'] = transactions_copy['price'] * transactions_copy['qty']
+        operations = transactions_copy.groupby(['datetime', 'operation'])['value'].agg('sum')
+        for ix, value in zip(operations.index, operations):
+            op_datetime, op_type = ix
+            signed_value = value if op_type == OPERATION_BUY else -value
+            history.append((op_datetime, signed_value))
+        return history
+    
     def __str__(self):
         s = f"Holder: {self.holder} - cash onhand: {self.cash_onhand:.2f}\n"
         s += f"Last transaction: {self.last_transaction}"
@@ -245,27 +264,31 @@ def generate_orders(old_portfolio, new_portfolio, prices):
     return orders
 
 
-if __name__ == '__main__':
-    '''
-    dd_account = Account("Daniel Duque", dt.datetime(2020, 9, 14, 9, 30))
-    dd_account.deposit(dt.datetime(2020, 9, 14, 9, 30), 1000)
-    dd_account.update_account(dt.datetime(2020, 9, 14, 9, 35), [
-        Order('HRL', 1, 49.95, OPERATION_BUY),
-        Order('NEM', 2, 66.54, OPERATION_BUY),
-        Order('SEE', 1, 39.49, OPERATION_BUY),
-        Order('MRO', 2, 4.47, OPERATION_BUY),
-        Order('WMT', 2, 136.14, OPERATION_BUY),
-        Order('CTXS', 1, 134.02, OPERATION_BUY),
-        Order('VZ', 1, 60.02, OPERATION_BUY),
-        Order('KR', 3, 33.68, OPERATION_BUY),
-        Order('HLT', 1, 88.18, OPERATION_BUY),
-        Order('SJM', 1, 113.49, OPERATION_BUY),
-    ])
-    dd_account.deposit(dt.datetime.today(), 1_000)
-    save_account(dd_account)
-    del dd_account
-    '''
-    dd_account = load_account("Daniel Duque")
-    for (i, v) in dd_account.__dict__.items():
-        print(i)
-        print(v)
+def build_account_history(portfolios, prices_history, benchmark=None):
+    account_history = []
+    portfolio_dates = list(portfolios.keys())
+    portfolio_dates.sort()
+    current_portfolio = None
+    for date_ix, date in enumerate(portfolio_dates):
+        current_portfolio = portfolios[date]
+        if len(current_portfolio.assets) == 0:
+            continue
+        assets_data = prices_history[current_portfolio.assets]
+        assert len(assets_data.columns) == len(current_portfolio.assets)
+        start_date = dt.datetime(date.year, date.month, date.day)
+        end_date = portfolio_dates[date_ix + 1] if date_ix + 1 < len(portfolio_dates) - 1 else dt.datetime.today()
+        assets_data = assets_data[assets_data.index >= start_date]
+        assets_data = assets_data[assets_data.index < end_date]
+        for d in assets_data.index:
+            total_assets_d = 0
+            prices_d = assets_data.loc[d]
+            for a in prices_d.index:
+                total_assets_d += prices_d.loc[a] * current_portfolio.get_position(a)
+            account_history.append(total_assets_d)
+    
+    import matplotlib.pyplot as plt
+    plt.plot(account_history, color='blue')
+    if benchmark:
+        plt.plot(benchmark, color='red')
+    plt.show()
+    return account_history
