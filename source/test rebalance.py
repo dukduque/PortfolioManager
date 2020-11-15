@@ -20,8 +20,8 @@ path_to_file = os.path.dirname(os.path.realpath(__file__))
 parent_path = os.path.abspath(os.path.join(path_to_file, os.pardir))
 sys.path.append(parent_path)
 file_name = 'close.pkl'
-start_date = dt.datetime(2018, 10, 14)  #Initial date for the training period
-end_date_train = dt.datetime(2020, 10, 14)  #Final date for the training period
+start_date = dt.datetime(2018, 11, 14)  #Initial date for the training period
+end_date_train = dt.datetime(2020, 11, 14)  #Final date for the training period
 end_date_test = dt.datetime(2021, 9, 4)  #Final date for the backtesting period
 outlier_return = 10  #Return threshold to eliminate outliters; a 10 means 1,000% return on a single day
 ini_capital = 1_000  #Initial capital available to be invested
@@ -75,15 +75,14 @@ opt_model = cvar_model_ortools(data,
                                budget=ini_capital,
                                fractional=False,
                                portfolio_delta=0,
-                               ignore=['TIF'],
-                               must_buy={"AMD": 3})
+                               ignore=["TIF"])
 '''
 Solve parametricly in beta
 '''
 portfolios = []
 portfolio_stats = []
 portfolio_names = []
-for cvar_beta in [0.9]:  # [i / 10 for i in range(1)]:
+for cvar_beta in [0.7]:  # [i / 10 for i in range(1)]:
     cvar_sol1, cvar_stats1 = opt_model.change_cvar_params(cvar_beta=cvar_beta)
     portfolios.append(cvar_sol1[cvar_sol1.qty > 0])
     portfolio_stats.append(cvar_stats1)

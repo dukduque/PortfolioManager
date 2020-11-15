@@ -226,13 +226,13 @@ def get_returns(data_file, start_date='2000', end_date=dt.datetime.today(), stoc
     return db, db_r
 
 
-def update_database(db, n_proc=1):
+def update_database(db, n_proc, days_back):
     '''
     Updates a database from the last prices.
     If n_proc > 1, runs a mutiprocess version of
     the function to speedup the colection of data.
     '''
-    ts = db.index[-1]  # get last date in DB  #TODO: what if last date was NaN
+    ts = db.index[-days_back]  # get last date in DB  #TODO: what if last date was NaN
     ndb = pd.DataFrame()
     failed_stocks = []
     print('Updating %i stock with %i processors' % (len(db.columns), n_proc))
@@ -291,9 +291,9 @@ def download_all_data(DB_file_name, sp500=True, rusell1000=False, include_bonds=
     return close_data
 
 
-def run_update_process(db_file_in='close.pkl', db_file_out='close.pkl', n_proc=4):
+def run_update_process(db_file_in='close.pkl', db_file_out='close.pkl', n_proc=4, days_back=1):
     db = load_database(db_file_in)
-    db = update_database(db, n_proc)
+    db = update_database(db, n_proc, days_back)
     save_database(db, db_file_out)
 
 
@@ -304,7 +304,7 @@ if __name__ == '__main__':
         today_ts = datetime.datetime.today()
         str_today = str(today_ts)
         out_file = 'close.pkl'  # % (str_today.split(' ')[0])
-        run_update_process(args.db_file, out_file, args.n_proc)
+        run_update_process(args.db_file, out_file, args.n_proc, args.days_back)
     elif args.a == 'd':
         download_all_data(args.db_file, n_proc=args.n_proc)
     elif args.a == 'sp500':

@@ -266,6 +266,7 @@ def generate_orders(old_portfolio, new_portfolio, prices):
 
 def build_account_history(portfolios, prices_history, benchmark=None):
     account_history = []
+    history_dates = []
     portfolio_dates = list(portfolios.keys())
     portfolio_dates.sort()
     current_portfolio = None
@@ -285,10 +286,22 @@ def build_account_history(portfolios, prices_history, benchmark=None):
             for a in prices_d.index:
                 total_assets_d += prices_d.loc[a] * current_portfolio.get_position(a)
             account_history.append(total_assets_d)
+            history_dates.append(d)
     
-    import matplotlib.pyplot as plt
-    plt.plot(account_history, color='blue')
-    if benchmark:
-        plt.plot(benchmark, color='red')
-    plt.show()
-    return account_history
+    return history_dates, account_history
+
+
+if __name__ == "__main__":
+    
+    dd_account = load_account("Daniel Duque")
+    dd_account.deposit(dt.datetime(2020, 11, 13, 9, 55), 1000)
+    dd_account.update_account(dt.datetime(2020, 11, 13, 10, 1), [
+        Order('VZ', 2, 60.46, OPERATION_BUY),
+        Order('WMT', 3, 148.17, OPERATION_BUY),
+        Order('CHRW', 2, 92.1, OPERATION_BUY),
+        Order('HRL', 3, 51.89, OPERATION_BUY),
+        Order('KR', 3, 31.91, OPERATION_BUY),
+    ])
+    print(dd_account)
+    print(dd_account.transactions)
+    # save_account(dd_account)
