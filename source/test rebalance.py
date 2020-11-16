@@ -53,22 +53,6 @@ dd_account = load_account("Daniel Duque")
 base_portfolio = dd_account.portfolio
 print(dd_account)
 
-sp500_portfolios = {}
-sp500_value = sum(sp500_stocks[s]['market_cap'] for s in db_all.columns)
-allocation = np.array([sp500_stocks[s]['market_cap'] for s in db_all.columns]) / sp500_value
-ini_portfolio = Portfolio.create_empty()
-for op_date, op_value in dd_account.operations_history():
-    pandas_date = pd.Timestamp(year=op_date.year, month=op_date.month, day=op_date.day)
-    date_ix = np.where(db_all.index == pandas_date)[0][0]
-    price_on_date = 0.2 * db_all.iloc[date_ix] + 0.8 * db_all.iloc[date_ix - 1]
-    print(price_on_date.head())
-    portfolio_on_date = Portfolio.create_from_vectors(assets=price_on_date.index,
-                                                      qty=allocation * op_value / price_on_date)
-    sp500_portfolios[op_date] = portfolio_on_date + ini_portfolio
-    ini_portfolio = sp500_portfolios[op_date]
-sp500_history = build_account_history(sp500_portfolios, db_all, None)
-build_account_history(dd_account.portfolios, db_all, sp500_history)
-
 opt_model = cvar_model_ortools(data,
                                price,
                                current_portfolio=base_portfolio,

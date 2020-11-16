@@ -372,8 +372,7 @@ class cvar_model_ortools(AbstractModel):
         stocks = price.index.to_list()
         portfolio_value = 0 if current_portfolio is None else sum(price[s] * current_portfolio.get_position(s)
                                                                   for s in current_portfolio.assets)
-        
-        solver = pywraplp.Solver.CreateSolver('cvar_model', 'CBC')
+        solver = pywraplp.Solver.CreateSolver('CBC')
         
         # Number of shares to buy from each stock
         x = {}
