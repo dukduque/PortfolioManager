@@ -37,6 +37,9 @@ def add_transactions(account_name):
 
 
 def benchmark(account_name):
+    '''
+        Benchmarks an account against the SP500
+    '''
     file_name = 'close.pkl'
     start_date = dt.datetime(2018, 11, 14)
     end_date_train = dt.datetime(2020, 11, 14)
@@ -49,7 +52,6 @@ def benchmark(account_name):
                             outlier_return=outlier_return)
     price = db.iloc[-1]  # Last row is the current price
     account = load_account(account_name)
-    base_portfolio = account.portfolio
     
     sp500_portfolios = {}
     sp500_value = sum(sp500_stocks[s]['market_cap'] for s in db.columns)
@@ -59,7 +61,6 @@ def benchmark(account_name):
         pandas_date = pd.Timestamp(year=op_date.year, month=op_date.month, day=op_date.day)
         date_ix = np.where(db.index == pandas_date)[0][0]
         price_on_date = 0.2 * db.iloc[date_ix] + 0.8 * db.iloc[date_ix - 1]
-        print(price_on_date.head())
         portfolio_on_date = Portfolio.create_from_vectors(assets=price_on_date.index,
                                                           qty=allocation * op_value / price_on_date)
         sp500_portfolios[op_date] = portfolio_on_date + ini_portfolio
@@ -76,5 +77,5 @@ def benchmark(account_name):
 if __name__ == "__main__":
     acc_name = "Daniel Duque"
     read_account(acc_name)
-    add_transactions(acc_name)
+    # add_transactions(acc_name)
     benchmark(acc_name)
