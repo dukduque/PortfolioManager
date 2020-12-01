@@ -372,13 +372,14 @@ class cvar_model_ortools(AbstractModel):
         stocks = price.index.to_list()
         portfolio_value = 0 if current_portfolio is None else sum(price[s] * current_portfolio.get_position(s)
                                                                   for s in current_portfolio.assets)
+        new_portfolio_value = portfolio_value + budget
         solver = pywraplp.Solver.CreateSolver('CBC')
         
         # Number of shares to buy from each stock
         x = {}
         for s in stocks:
             x_lb = 0 if s not in must_buy else must_buy[s]
-            x_ub = np.max(budget / price) if s not in ignore else 0
+            x_ub = np.max(budget / price) if s not in ignore else np.maximum(0.0, current_portfolio.get_position(s))
             if fractional:
                 x[s] = solver.NumVar(x_lb, x_ub, f'x{s}')
             else:
@@ -392,8 +393,11 @@ class cvar_model_ortools(AbstractModel):
         # Value at risk
         eta = solver.NumVar(-solver.infinity(), solver.infinity(), 'eta')
         
+        # Cash
+        cash = solver.NumVar(0, new_portfolio_value, 'cash')
+        
         # Portfolio budget contraint
-        solver.Add(sum(price[s] * x[s] for s in stocks) <= budget + portfolio_value)
+        solver.Add(sum(price[s] * x[s] for s in stocks) + cash == new_portfolio_value)
         
         # Risk constraint (>= becuase is a loss, i.e., want to bound loss from below)
         cvar = eta + (1.0 / (n * (1 - cvar_alpha))) * sum(z[i] for i in range(n))
@@ -401,7 +405,8 @@ class cvar_model_ortools(AbstractModel):
         
         # CVaR linearlization
         for i in range(n):
-            solver.Add(z[i] >= sum((-(r[i, j]) * price[s] * x[s] for (j, s) in enumerate(stocks))) - eta)
+            solver.Add(z[i] >= sum((-(r[i, j]) * price[s] * x[s] / new_portfolio_value
+                                    for (j, s) in enumerate(stocks))) - cash / new_portfolio_value - eta)
         
         # Limit number of rebalancing sell transactions
         if current_portfolio is not None:
@@ -414,12 +419,14 @@ class cvar_model_ortools(AbstractModel):
             solver.Add(sum(delta_x[s] for s in current_portfolio.assets) <= portfolio_delta)
         
         # Objective function
-        exp_return = sum(self.r_bar[j] * price[s] * x[s] for (j, s) in enumerate(stocks))
+        exp_return = sum(self.r_bar[j] * price[s] * x[s] / new_portfolio_value for (j, s) in enumerate(stocks))
+        exp_return = exp_return + cash / new_portfolio_value
         solver.Maximize(cvar_beta * exp_return - (1 - cvar_beta) * cvar)
         
         self.solver = solver
         self.cvar = cvar
         self.exp_return = exp_return
+        self.cash = cash
         self.x = x
         self.z = z
         self.eta = eta
@@ -440,6 +447,7 @@ class cvar_model_ortools(AbstractModel):
         p1.SetDoubleParam(p1.RELATIVE_MIP_GAP, mip_gap)
         self.solver.Solve(p1)
         print('Objective func value:', self.solver.Objective().Value())
+        print('Cash on hand:', self.cash.solution_value())
         x_sol = np.array([self.x[s].solution_value() for s in self.stocks])
         allocation = x_sol * self.price / np.sum(self.price * x_sol)
         sol_out = pd.DataFrame({

@@ -189,8 +189,8 @@ class Account:
     
     def __str__(self):
         s = f"Holder: {self.holder} - cash onhand: {self.cash_onhand:.2f}\n"
-        s += f"Last transaction: {self.last_transaction}"
-        s += f"Portfolio:\n\t{self.portfolio}"
+        s += f"Last transaction: {self.last_transaction} \n"
+        s += f"Portfolio:\n{self.portfolio}"
         return s
 
 
@@ -247,8 +247,8 @@ def load_account(account_name):
 def generate_orders(old_portfolio, new_portfolio, prices):
     '''
         Generates a list of orders given two porfolios and the prices used to optimize
-        the new portfolio. Note that buy/sell prices for these orders might be (slightly) 
-        different as since the orders are placed manually after the fact.
+        the new portfolio. Note that buy/sell prices for these orders might be (slightly)
+        different since the orders are placed manually after generating them.
     '''
     orders = []
     assets = set()
@@ -264,44 +264,42 @@ def generate_orders(old_portfolio, new_portfolio, prices):
     return orders
 
 
-def build_account_history(portfolios, prices_history, benchmark=None):
+def build_account_history(portfolios, prices_history):
+    '''
+        Build a time series of the total value of the porfolios that
+        an account has had since its opening until the last date in
+        `prices_history`.
+
+        Args:
+            portfolios (dict of string-Porfolio): portfolios of the account
+            at different transaction dates.
+            price_history (pd.Dataframe): Historic prices of all stock.
+    '''
     account_history = []
     history_dates = []
     portfolio_dates = list(portfolios.keys())
     portfolio_dates.sort()
     current_portfolio = None
     for date_ix, date in enumerate(portfolio_dates):
+        print("  - > ", date)
         current_portfolio = portfolios[date]
         if len(current_portfolio.assets) == 0:
             continue
         assets_data = prices_history[current_portfolio.assets]
         assert len(assets_data.columns) == len(current_portfolio.assets)
         start_date = dt.datetime(date.year, date.month, date.day)
-        end_date = portfolio_dates[date_ix + 1] if date_ix + 1 < len(portfolio_dates) - 1 else dt.datetime.today()
+        end_date = portfolio_dates[date_ix + 1] if date_ix + 1 <= len(portfolio_dates) - 1 else dt.datetime.today()
+        end_date = dt.datetime(end_date.year, end_date.month, end_date.day)
+        print('the end ', end_date)
         assets_data = assets_data[assets_data.index >= start_date]
-        assets_data = assets_data[assets_data.index < end_date]
+        assets_data = assets_data[assets_data.index <= end_date]
         for d in assets_data.index:
+            print(d)
             total_assets_d = 0
             prices_d = assets_data.loc[d]
-            for a in prices_d.index:
-                total_assets_d += prices_d.loc[a] * current_portfolio.get_position(a)
+            for asset in prices_d.index:
+                total_assets_d += prices_d.loc[asset] * current_portfolio.get_position(asset)
             account_history.append(total_assets_d)
             history_dates.append(d)
     
     return history_dates, account_history
-
-
-if __name__ == "__main__":
-    
-    dd_account = load_account("Daniel Duque")
-    dd_account.deposit(dt.datetime(2020, 11, 13, 9, 55), 1000)
-    dd_account.update_account(dt.datetime(2020, 11, 13, 10, 1), [
-        Order('VZ', 2, 60.46, OPERATION_BUY),
-        Order('WMT', 3, 148.17, OPERATION_BUY),
-        Order('CHRW', 2, 92.1, OPERATION_BUY),
-        Order('HRL', 3, 51.89, OPERATION_BUY),
-        Order('KR', 3, 31.91, OPERATION_BUY),
-    ])
-    print(dd_account)
-    print(dd_account.transactions)
-    # save_account(dd_account)
