@@ -380,7 +380,8 @@ class cvar_model_ortools(AbstractModel):
         for s in stocks:
             x_lb = 0 if s not in must_buy else must_buy[s]
             x_ub = np.max(budget / price) if s not in ignore else np.maximum(0.0, current_portfolio.get_position(s))
-            if fractional:
+            if fractional or current_portfolio.position_is_fractional(s):
+                print(s)
                 x[s] = solver.NumVar(x_lb, x_ub, f'x{s}')
             else:
                 x[s] = solver.IntVar(x_lb, x_ub, f'x{s}')
@@ -448,7 +449,7 @@ class cvar_model_ortools(AbstractModel):
         self.solver.Solve(p1)
         print('Objective func value:', self.solver.Objective().Value())
         print('Cash on hand:', self.cash.solution_value())
-        x_sol = np.array([self.x[s].solution_value() for s in self.stocks])
+        x_sol = np.round(np.array([self.x[s].solution_value() for s in self.stocks]), 6)
         allocation = x_sol * self.price / np.sum(self.price * x_sol)
         sol_out = pd.DataFrame({
             'price': self.price,

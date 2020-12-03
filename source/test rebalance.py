@@ -2,12 +2,8 @@
 Created on Thu May 23 22:36:26 2019
 @author: dduque
 """
-'''
-Setup paths
-'''
 import sys
 import os
-print(sys.version)
 import datetime as dt
 import pandas as pd
 import numpy as np
@@ -16,12 +12,15 @@ import database_handler as dbh
 from opt_tools import cvar_model_pulp, cvar_model_ortools
 from resources import Portfolio, Account, load_account, generate_orders, save_account, build_account_history
 
+# Setup paths
 path_to_file = os.path.dirname(os.path.realpath(__file__))
 parent_path = os.path.abspath(os.path.join(path_to_file, os.pardir))
 sys.path.append(parent_path)
+
+# Prices file and dates
 file_name = 'close.pkl'
 start_date = dt.datetime(2018, 11, 14)  #Initial date for the training period
-end_date_train = dt.datetime(2020, 11, 14)  #Final date for the training period
+end_date_train = dt.datetime(2020, 11, 30)  #Final date for the training period
 end_date_test = dt.datetime(2021, 9, 4)  #Final date for the backtesting period
 outlier_return = 10  #Return threshold to eliminate outliters; a 10 means 1,000% return on a single day
 ini_capital = 1_000  #Initial capital available to be invested
@@ -39,7 +38,6 @@ db_all, _ = dbh.get_returns(data_file=file_name,
 # Train set
 stock_universe = list(db_all.columns)
 db, db_r = dbh.get_returns(data_file=file_name, start_date=start_date, end_date=end_date_train, stocks=stock_universe)
-# ['ABC','MSFT', 'AMZN', 'GOOGL', 'GE', 'F', 'MMM', 'ATVI'])
 data = np.array(db_r)
 '''
 Create model with default parameters
@@ -55,18 +53,19 @@ print(dd_account)
 
 opt_model = cvar_model_ortools(data,
                                price,
+                               cvar_alpha=0.9,
                                current_portfolio=base_portfolio,
                                budget=ini_capital,
                                fractional=False,
                                portfolio_delta=0,
-                               ignore=["TIF"])
+                               ignore=[])
 '''
 Solve parametricly in beta
 '''
 portfolios = []
 portfolio_stats = []
 portfolio_names = []
-for cvar_beta in [0.7]:  # [i / 10 for i in range(1)]:
+for cvar_beta in [0.93]:  # [i / 10 for i in range(1)]:
     cvar_sol1, cvar_stats1 = opt_model.change_cvar_params(cvar_beta=cvar_beta)
     portfolios.append(cvar_sol1[cvar_sol1.qty > 0])
     portfolio_stats.append(cvar_stats1)
@@ -95,7 +94,8 @@ for (p, ps) in zip(portfolios, portfolio_stats):
     p2['name'] = [sp500_stocks[s]['name'] for s in p.index]
     p2['sector'] = [sp500_stocks[s]['sector'] for s in p.index]
     p2['subsector'] = [sp500_stocks[s]['subsector'] for s in p.index]
-    print(p2, ps)
+    print(p2)
+    print(ps)
 print(portfolio_names)
 import pickle
 out_portfolios = portfolios, portfolio_stats, portfolio_names
@@ -115,4 +115,4 @@ sp500history = np.array(sp500history[(sp500history.index >= start_date_test) & (
 factor = ini_capital / sp500history[0]
 sp500history = factor * sp500history
 # portfolio_paths.append([sp500history])
-bt.plot_backtests(portfolio_paths, portfolio_names)
+# bt.plot_backtests(portfolio_paths, portfolio_names)

@@ -36,6 +36,13 @@ class Portfolio:
         else:
             return 0
     
+    def position_is_fractional(self, asset):
+        position = self.get_position(asset)
+        if position - int(position) > 0:
+            return True
+        else:
+            return False
+    
     @property
     def assets(self):
         if not hasattr(self, '_assets'):
