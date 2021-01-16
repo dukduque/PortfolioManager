@@ -381,7 +381,6 @@ class cvar_model_ortools(AbstractModel):
             x_lb = 0 if s not in must_buy else must_buy[s]
             x_ub = np.max(budget / price) if s not in ignore else np.maximum(0.0, current_portfolio.get_position(s))
             if fractional or current_portfolio.position_is_fractional(s):
-                print(s)
                 x[s] = solver.NumVar(x_lb, x_ub, f'x{s}')
             else:
                 x[s] = solver.IntVar(x_lb, x_ub, f'x{s}')
@@ -421,7 +420,7 @@ class cvar_model_ortools(AbstractModel):
         
         # Objective function
         exp_return = sum(self.r_bar[j] * price[s] * x[s] / new_portfolio_value for (j, s) in enumerate(stocks))
-        exp_return = exp_return + cash / new_portfolio_value
+        exp_return = exp_return  # + cash / new_portfolio_value
         solver.Maximize(cvar_beta * exp_return - (1 - cvar_beta) * cvar)
         
         self.solver = solver

@@ -11,6 +11,7 @@ from source.resources import Portfolio, Account, Order, load_account, generate_o
 from source.resources import OPERATION_BUY, OPERATION_SELL, build_account_history
 import datetime as dt
 from source import database_handler as dbh
+from source.database_handler import DataManager
 import pandas as pd
 import numpy as np
 from collections import defaultdict
@@ -24,9 +25,12 @@ def read_account(account_name):
 
 def add_transactions(account_name):
     account = load_account(account_name)
-    account.deposit(dt.datetime(2020, 11, 30, 9, 0), 3.636 * 1768.88)
-    account.update_account(dt.datetime(2020, 11, 30, 15, 0), [
-        Order('GOOG', 3.636, 1768.88, OPERATION_BUY),
+    account.deposit(dt.datetime(2021, 1, 12, 10, 0), 1000)
+    account.update_account(dt.datetime(2021, 1, 15, 14, 00), [
+        Order('AMD', 3, 89.14, OPERATION_BUY),
+        Order('WMT', 3, 144.64, OPERATION_BUY),
+        Order('MSFT', 1, 213.79, OPERATION_BUY),
+        Order('BOTZ', 3, 34.64, OPERATION_BUY),
     ])
     return account
 
@@ -35,33 +39,24 @@ def benchmark(account_name):
     '''
         Benchmarks an account against the SP500
     '''
-    file_name = 'close.pkl'
-    start_date = dt.datetime(2018, 11, 14)
-    end_date_train = dt.datetime(2020, 11, 14)
-    end_date_test = dt.datetime(2021, 9, 4)
-    outlier_return = 10
-    sp500_stocks = dbh.get_sp500_tickers()
-    db, _ = dbh.get_returns(data_file=file_name,
-                            start_date=start_date,
-                            stocks=list(sp500_stocks.keys()),
-                            outlier_return=outlier_return)
-    price = db.iloc[-1]  # Last row is the current price
     account = load_account(account_name)
     
+    file_name = 'close.pkl'
+    data_manager = DataManager(db_file=file_name)
+    sp500_stocks = dbh.get_sp500_tickers()
+    
     sp500_portfolios = {}
-    sp500_value = sum(sp500_stocks[s]['market_cap'] for s in db.columns)
-    allocation = np.array([sp500_stocks[s]['market_cap'] for s in db.columns]) / sp500_value
     ini_portfolio = Portfolio.create_empty()
+    SPY_prices = data_manager.get_prices("SPY")
     for op_date, op_value in account.operations_history():
         pandas_date = pd.Timestamp(year=op_date.year, month=op_date.month, day=op_date.day)
-        date_ix = np.where(db.index == pandas_date)[0][0]
-        price_on_date = 0.2 * db.iloc[date_ix] + 0.8 * db.iloc[date_ix - 1]
-        portfolio_on_date = Portfolio.create_from_vectors(assets=price_on_date.index,
-                                                          qty=allocation * op_value / price_on_date)
+        date_ix = np.where(SPY_prices.index == pandas_date)[0][0]
+        price_on_date = SPY_prices.iloc[date_ix]
+        portfolio_on_date = Portfolio.create_from_vectors(assets=['SPY'], qty=[op_value / price_on_date])
         sp500_portfolios[op_date] = portfolio_on_date + ini_portfolio
         ini_portfolio = sp500_portfolios[op_date]
-    history_dates, sp_500_history_values = build_account_history(sp500_portfolios, db)
-    history_dates, history_values = build_account_history(account.portfolios, db)
+    history_dates, sp_500_history_values = build_account_history(sp500_portfolios, data_manager)
+    history_dates, history_values = build_account_history(account.portfolios, data_manager)
     
     fig, axes = plt.subplots(ncols=1, figsize=(12, 4))
     axes.plot(history_dates, history_values, color='blue')
@@ -71,15 +66,12 @@ def benchmark(account_name):
 
 def piechart(account_name):
     file_name = 'close.pkl'
-    sp500_stocks = dbh.get_sp500_tickers()
-    db, _ = dbh.get_returns(data_file=file_name,
-                            start_date=dt.datetime.today() - dt.timedelta(5),
-                            stocks=list(sp500_stocks.keys()),
-                            outlier_return=10)
-    price = db.iloc[-1]  # Last row is the current price
+    data_manager = DataManager(db_file=file_name)
     account = load_account(account_name)
     portfolio = account.portfolio
     assets = portfolio.assets
+    price = data_manager.get_prices(assets).iloc[-1]  # Last row is the current price
+    
     position = np.array([portfolio.get_position(a) * price[a] for a in assets])
     portfolio_value = position.sum()
     position /= portfolio_value
@@ -94,8 +86,9 @@ def piechart(account_name):
     for a in assets:
         total_position = portfolio.get_position(a) * price[a]
         marginal_position = total_position / portfolio_value
-        print(f'{a} {sp500_stocks[a]["sector"]}  {total_position:.2f} {marginal_position:.3f}')
-        sectors[sp500_stocks[a]['sector']] += marginal_position
+        sector = data_manager.get_metadata(a)['sector']
+        print(f'{a} {sector}  {total_position:.2f} {marginal_position:.3f}')
+        sectors[sector] += marginal_position
     
     fig, axes = plt.subplots(ncols=1, figsize=(5, 5))
     axes.pie(sectors.values(), labels=sectors.keys(), autopct='%1.1f%%')

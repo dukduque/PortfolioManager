@@ -36,9 +36,58 @@ path_to_data = os.path.abspath(os.path.join(parent_path, 'data'))
 path_to_output = os.path.abspath(os.path.join(parent_path, 'output'))
 
 from source import popt_utils as popt_utils
-'''
-Setup libraries
-'''
+
+EMPTY_METADATA = {
+    'name': '',
+    'sector': '',
+    'subsector': '',
+    'market_cap': '',
+}
+
+
+class DataManager:
+    """
+    An instance of this class access and maintains the data.
+    """
+    def __init__(self, db_file='close.pkl', metadata_file='metadata.pkl'):
+        self.db = load_database(db_file)
+        self.metadata = get_tickers_metadata(metadata_file)
+        self.db_file = db_file
+        self.metadata_file = metadata_file
+    
+    def get_prices(self, assets):
+        '''
+        assets (str or list): an asset or list of assets.
+        '''
+        if type(assets) == str:
+            assets = [assets]
+        
+        for asset in assets:
+            if asset not in self.db.columns:
+                self.db = update_database_single_stock(self.db, asset, self.db_file, self.metadata_file)
+        return self.db[assets]
+    
+    def get_metadata(self, asset):
+        assert type(asset) == str
+        if asset in self.metadata:
+            return self.metadata[asset]
+        try:
+            asset_ticket = yf.Ticker(asset)
+            info = asset_ticket.info
+            self.metadata[asset] = EMPTY_METADATA.copy()
+            self.metadata[asset]['name'] = info['shortName']
+            self.metadata[asset]['quoteType'] = info['quoteType']
+            if info['quoteType'] == "ETF":
+                self.metadata[asset]['sector'] = 'ETF'
+                self.metadata[asset]['industry'] = 'ETF'
+            elif info['quoteType'] == "EQUITY":
+                self.metadata[asset]['sector'] = info['sector']
+                self.metadata[asset]['industry'] = info['industry']
+        except Exception:
+            self.metadata[asset] = EMPTY_METADATA
+            self.metadata[asset]['name'] = asset
+        safe_metadata(self.metadata, self.metadata_file)
+        return self.metadata[asset]
 
 
 def save_sp500_tickers():
@@ -82,6 +131,13 @@ def get_sp500_tickers():
     path_to_file = Path(os.path.join(path_to_data, "sp500.pkl"))
     if not path_to_file.exists:
         save_sp500_tickers()
+    return pickle.load(path_to_file.open('rb'))
+
+
+def get_tickers_metadata(meta_data_file):
+    path_to_file = Path(os.path.join(path_to_data, meta_data_file))
+    if not path_to_file.exists:
+        return {}
     return pickle.load(path_to_file.open('rb'))
 
 
@@ -135,6 +191,18 @@ def save_database(BD, DB_file_name):
         copy_path = os.path.join(path_to_data, copy_name)
         shutil.copyfile(path_to_database, copy_path)
     BD.to_pickle(path_to_database)
+
+
+def safe_metadata(metadata, metadata_file):
+    path_to_database = os.path.join(path_to_data, metadata_file)
+    print(path_to_database)
+    exists = os.path.isfile(path_to_database)
+    if exists:
+        copy_name = 'copy_%s' % (metadata_file)
+        copy_path = os.path.join(path_to_data, copy_name)
+        shutil.copyfile(path_to_database, copy_path)
+    with open(path_to_database, 'wb') as handle:
+        pickle.dump(metadata, handle, pickle.HIGHEST_PROTOCOL)
 
 
 def create_database(stock_symbol='GOOGLE', start=None, end=None):
@@ -263,6 +331,16 @@ def update_database(db, n_proc, days_back):
     out_db = pd.concat((db, ndb), axis=0, join='outer')
     out_db = out_db.loc[~out_db.index.duplicated(keep='last')]
     return out_db
+
+
+def update_database_single_stock(db, ticker_symbol, db_output_file='close.pkl', info_output_file='assets_listing.pkl'):
+    
+    db, status = add_stock(db, ticker_symbol, db.index[0], dt.datetime.today())
+    if status:
+        save_database(db, db_output_file)
+    else:
+        print(f"Database was not updated with ticker {ticker_symbol}")
+    return db
 
 
 def download_all_data(DB_file_name, sp500=True, rusell1000=False, include_bonds=True, n_proc=4):

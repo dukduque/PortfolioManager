@@ -20,10 +20,10 @@ sys.path.append(parent_path)
 # Prices file and dates
 file_name = 'close.pkl'
 start_date = dt.datetime(2018, 11, 14)  #Initial date for the training period
-end_date_train = dt.datetime(2020, 11, 30)  #Final date for the training period
+end_date_train = dt.datetime(2021, 1, 15)  #Final date for the training period
 end_date_test = dt.datetime(2021, 9, 4)  #Final date for the backtesting period
 outlier_return = 10  #Return threshold to eliminate outliters; a 10 means 1,000% return on a single day
-ini_capital = 1_000  #Initial capital available to be invested
+ini_capital = 1_020  #Initial capital available to be invested
 
 sp500 = dbh.yf.Ticker("^GSPC")  # Ticker
 sp500history = sp500.history(period='max', interval='1d')['Close']
@@ -53,7 +53,7 @@ print(dd_account)
 
 opt_model = cvar_model_ortools(data,
                                price,
-                               cvar_alpha=0.9,
+                               cvar_alpha=0.95,
                                current_portfolio=base_portfolio,
                                budget=ini_capital,
                                fractional=False,
@@ -65,14 +65,15 @@ Solve parametricly in beta
 portfolios = []
 portfolio_stats = []
 portfolio_names = []
-for cvar_beta in [0.93]:  # [i / 10 for i in range(1)]:
+for cvar_beta in [.96]:  # [i / 10 for i in range(1)]:
     cvar_sol1, cvar_stats1 = opt_model.change_cvar_params(cvar_beta=cvar_beta)
     portfolios.append(cvar_sol1[cvar_sol1.qty > 0])
     portfolio_stats.append(cvar_stats1)
     portfolio_names.append(f'cvar_{cvar_beta}')
-orders = generate_orders(base_portfolio, Portfolio.create_from_vectors(portfolios[-1].index, portfolios[-1].qty), price)
-for o in orders:
-    print(o)
+    orders = generate_orders(base_portfolio, Portfolio.create_from_vectors(portfolios[-1].index, portfolios[-1].qty),
+                             price)
+    for o in orders:
+        print(o)
 
 # SP500 porfolio
 sp500_value = sum(sp500_stocks[s]['market_cap'] for s in db_r.columns)

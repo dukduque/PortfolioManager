@@ -271,7 +271,7 @@ def generate_orders(old_portfolio, new_portfolio, prices):
     return orders
 
 
-def build_account_history(portfolios, prices_history):
+def build_account_history(portfolios, data_manager):
     '''
         Build a time series of the total value of the porfolios that
         an account has had since its opening until the last date in
@@ -280,7 +280,8 @@ def build_account_history(portfolios, prices_history):
         Args:
             portfolios (dict of string-Porfolio): portfolios of the account
             at different transaction dates.
-            price_history (pd.Dataframe): Historic prices of all stock.
+            data_manager (DataManager): instance of a data manager to get
+            prices from.
     '''
     account_history = []
     history_dates = []
@@ -292,7 +293,7 @@ def build_account_history(portfolios, prices_history):
         current_portfolio = portfolios[date]
         if len(current_portfolio.assets) == 0:
             continue
-        assets_data = prices_history[current_portfolio.assets]
+        assets_data = data_manager.get_prices(current_portfolio.assets)
         assert len(assets_data.columns) == len(current_portfolio.assets)
         start_date = dt.datetime(date.year, date.month, date.day)
         end_date = portfolio_dates[date_ix + 1] if date_ix + 1 <= len(portfolio_dates) - 1 else dt.datetime.today()
