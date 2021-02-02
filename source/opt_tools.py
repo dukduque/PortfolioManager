@@ -366,6 +366,8 @@ class cvar_model_ortools(AbstractModel):
                  must_buy={}):
         
         # Data prep
+        assert len(r) > 0 and len(
+            r[0]) == len(price), 'The number of securities in the returns array must match that in the price array'
         self.r_bar = np.mean(r, axis=0)
         self.cov = np.cov(r, rowvar=False)
         n = len(r)  # Number of returns
@@ -379,7 +381,8 @@ class cvar_model_ortools(AbstractModel):
         x = {}
         for s in stocks:
             x_lb = 0 if s not in must_buy else must_buy[s]
-            x_ub = np.max(budget / price) if s not in ignore else np.maximum(0.0, current_portfolio.get_position(s))
+            x_ub = np.max(new_portfolio_value /
+                          price) if s not in ignore else np.maximum(0.0, current_portfolio.get_position(s))
             if fractional or current_portfolio.position_is_fractional(s):
                 x[s] = solver.NumVar(x_lb, x_ub, f'x{s}')
             else:
@@ -491,7 +494,16 @@ class ssd_model_pulp(AbstractModel):
     '''
     Model based on second order stochastic dominance
     '''
-    def __init__(self, returns, price, budget, benchmark, fractional=True):
+    def __init__(self,
+                 r,
+                 price,
+                 budget,
+                 benchmark,
+                 current_portfolio=None,
+                 portfolio_delta=0,
+                 fractional=True,
+                 ignore=[],
+                 must_buy={}):
         '''
         Constructor of an SSD model
         Args:

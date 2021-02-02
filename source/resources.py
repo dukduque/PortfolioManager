@@ -289,7 +289,6 @@ def build_account_history(portfolios, data_manager):
     portfolio_dates.sort()
     current_portfolio = None
     for date_ix, date in enumerate(portfolio_dates):
-        print("  - > ", date)
         current_portfolio = portfolios[date]
         if len(current_portfolio.assets) == 0:
             continue
@@ -298,11 +297,9 @@ def build_account_history(portfolios, data_manager):
         start_date = dt.datetime(date.year, date.month, date.day)
         end_date = portfolio_dates[date_ix + 1] if date_ix + 1 <= len(portfolio_dates) - 1 else dt.datetime.today()
         end_date = dt.datetime(end_date.year, end_date.month, end_date.day)
-        print('the end ', end_date)
         assets_data = assets_data[assets_data.index >= start_date]
         assets_data = assets_data[assets_data.index <= end_date]
         for d in assets_data.index:
-            print(d)
             total_assets_d = 0
             prices_d = assets_data.loc[d]
             for asset in prices_d.index:

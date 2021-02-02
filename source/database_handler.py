@@ -55,10 +55,13 @@ class DataManager:
         self.db_file = db_file
         self.metadata_file = metadata_file
     
-    def get_prices(self, assets):
+    def get_prices(self, assets=None):
         '''
         assets (str or list): an asset or list of assets.
         '''
+        if assets is None or len(assets) == 0:
+            return self.db
+        
         if type(assets) == str:
             assets = [assets]
         
@@ -88,6 +91,34 @@ class DataManager:
             self.metadata[asset]['name'] = asset
         safe_metadata(self.metadata, self.metadata_file)
         return self.metadata[asset]
+    
+    def get_returns(self, start_date, end_date, stocks=[], outlier_return=10):
+        '''
+        Computes returns from specific dates and list of securities.
+        '''
+        if len(stocks) == 0 and hasattr(self, '_returns'):
+            return self._returns
+        
+        for s in stocks:
+            if s not in self.db.columns:
+                try:
+                    self.get_prices(s)
+                    self.get_metadata(s)
+                except Exception:
+                    print(f'Fail while obtaining data from security {s}')
+        db = self.db[self.db.index >= start_date]
+        db = db[db.index <= end_date]
+        db = db.dropna(axis=0, how='all')
+        db = db.dropna(axis=1)
+        db_r = db.apply(quotien_diff, axis=0)  # compute returns
+        db_r = db_r[db_r < outlier_return].dropna(axis=0)  # Filter outliers
+        
+        self._returns = db_r
+        return db_r
+    
+    @property
+    def securities(self):
+        return list(self.db.columns)
 
 
 def save_sp500_tickers():
@@ -278,6 +309,7 @@ def get_returns(data_file, start_date='2000', end_date=dt.datetime.today(), stoc
         db (DataFrame): dataframe with the stock prices
         db_r (DataFrame): dataframe with the returns
     '''
+    assert data_file is None, 'Deprecated function'
     assert start_date >= datetime.datetime(1970, 1, 1), 'Year should be from 1970'
     db = load_database(data_file)
     if len(stocks) > 0:
