@@ -61,7 +61,6 @@ for cvar_beta in [0.95]:  # [i / 10 for i in range(1)]:
 
 for (p, ps) in zip(portfolios, portfolio_stats):
     p2 = p.copy()
-    
     p2['name'] = [data_manager.get_metadata(s)['name'] for s in p.index]
     p2['sector'] = [data_manager.get_metadata(s)['sector'] for s in p.index]
     p2['subsector'] = [data_manager.get_metadata(s)['subsector'] for s in p.index]

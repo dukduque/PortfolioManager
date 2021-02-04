@@ -518,13 +518,11 @@ class ssd_model_pulp(AbstractModel):
         self.z = None
         self.ssd = None
         
-        r = np.array(returns)
         self.r_bar = np.mean(r, axis=0)
         self.cov = np.cov(r, rowvar=False)
         
-        benchmark_positions = np.array(benchmark) * budget
-        Y = np.dot(r, benchmark_positions)  # Distribution of the benchmark
-        Y = np.percentile(Y, q=[1, 5, 10, 20, 30, 40, 50, 60])  # [i * 1 for i in range(1, 101)])
+        Y = benchmark * budget  # Distribution of the benchmark
+        Y = np.percentile(Y, q=[10, 25, 50, 75, 90])  # [i * 1 for i in range(1, 101)])
         Y.sort()
         print(Y)
         
@@ -565,7 +563,7 @@ class ssd_model_pulp(AbstractModel):
             m += ssd[i] == exp_Y_shortfall_i - (lpSum(z[i, j] for j in range(n)) / n), 'ssd_slack_%i' % (i)
             m += min_ssd <= ssd[i], 'min_max_ctr_%i' % (i)
         
-        m += min_ssd  # pSum(ssd)  # min_ssd
+        m += lpSum(ssd)  # min_ssd
         print('Done model')
         self.m = m
         self.x = x
@@ -575,7 +573,7 @@ class ssd_model_pulp(AbstractModel):
         self.price = price
         self.n = n
         
-        self.Y = np.dot(r, benchmark_positions)  # Distribution of the benchmark
+        self.Y = benchmark  # Distribution of the benchmark
         self.r = r
         
         # return self.optimize()
@@ -600,7 +598,7 @@ class ssd_model_pulp(AbstractModel):
         stats['std'] = np.sqrt(allocation.dot(self.cov.dot(allocation)))
         
         Y = self.Y
-        X = self.r.dot(x_sol * self.price)
+        X = self.r.dot(allocation)
         plt.hist(X, bins=30, color='b', alpha=0.9)
         plt.hist(Y, bins=30, color='r', alpha=0.6)
         plt.tight_layout()
