@@ -79,7 +79,7 @@ class Portfolio:
         return self.__str__()
     
     def __add__(self, other_portfolio):
-        all_assets = list(set(self.assets + other_portfolio.assets))
+        all_assets = list(set(list(self.assets) + list(other_portfolio.assets)))
         qtys = []
         for a in all_assets:
             q = self.get_position(a) + other_portfolio.get_position(a)
