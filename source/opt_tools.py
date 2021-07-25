@@ -14,7 +14,7 @@ import pandas as pd
 from itertools import product
 from matplotlib import pyplot as plt
 from pulp import LpProblem, LpVariable, LpMaximize, LpContinuous, LpInteger, lpSum, COIN_CMD
-from pulp.solvers import PULP_CBC_CMD
+from pulp.apis.core import LpSolver_CMD
 from ortools.linear_solver import pywraplp
 
 
@@ -306,12 +306,10 @@ class cvar_model_pulp(AbstractModel):
         self.stocks = stocks
         self.price = price
         self.n = n
-        
-        #return self.optimize()
     
     def optimize(self, mip_gap=0.001):
-        cbc_solver = PULP_CBC_CMD(msg=1, fracGap=mip_gap)
-        cbc_solver.solve(self.m)
+        cbc_solver = LpSolver_CMD(msg=1, fracGap=mip_gap)
+        self.m.solve(solver=cbc_solver)
         print('Objective func value:', self.m.objective.value())
         x_sol = np.array([self.x[j].value() for j in self.stocks])
         allocation = x_sol * self.price / np.sum(self.price * x_sol)
@@ -440,7 +438,7 @@ class cvar_model_ortools(AbstractModel):
         self.price = price
         self.n = n
     
-    def optimize(self, mip_gap=0.001):
+    def optimize(self, mip_gap=0.0001):
         # self.solver.parameters.RELATIVE_MIP_GAP = 1.0
         # print('Param changed ', param_change)
         # self.solver.EnableOutput()
@@ -499,6 +497,7 @@ class ssd_model_pulp(AbstractModel):
                  price,
                  budget,
                  benchmark,
+                 max_percentile=50,
                  current_portfolio=None,
                  portfolio_delta=0,
                  fractional=True,
@@ -521,19 +520,32 @@ class ssd_model_pulp(AbstractModel):
         self.r_bar = np.mean(r, axis=0)
         self.cov = np.cov(r, rowvar=False)
         
-        Y = benchmark * budget  # Distribution of the benchmark
-        Y = np.percentile(Y, q=[10, 25, 50, 75, 90])  # [i * 1 for i in range(1, 101)])
+        portfolio_value = 0 if current_portfolio is None else sum(price[s] * current_portfolio.get_position(s)
+                                                                  for s in current_portfolio.assets)
+        new_portfolio_value = portfolio_value + budget
+        
+        Y = benchmark * new_portfolio_value  # Distribution of the benchmark
+        target_percentiles = [i * max_percentile / 10 for i in range(1, 11)]
+        print(target_percentiles)
+        Y = np.percentile(Y, q=target_percentiles)  # [i * 1 for i in range(1, 101)])
         Y.sort()
         print(Y)
         
         nY = len(Y)  # Number of returns
         n = len(r)  # Number of returns
         stocks = price.index.to_list()
+        
+        # PuLP Model
         m = LpProblem(name='SSD_model', sense=LpMaximize)
         
-        # Number of shares to by
-        varType = LpContinuous if fractional else LpInteger
-        x = LpVariable.dicts(name='x', indexs=stocks, lowBound=0, upBound=np.max(budget / price), cat=varType)
+        # Number of shares to buy
+        x = {}
+        for s in stocks:
+            x_lb = 0 if s not in must_buy else must_buy[s]
+            x_ub = np.max(new_portfolio_value /
+                          price) if s not in ignore else np.maximum(0.0, current_portfolio.get_position(s))
+            varType = LpContinuous if fractional or current_portfolio.position_is_fractional(s) else LpInteger
+            x[s] = LpVariable(name=f'x_{s}', lowBound=x_lb, upBound=x_ub, cat=varType)
         
         # Auxiliary variable to compute shortfall in SSD
         z_index = list(product(range(nY), range(n)))
@@ -544,10 +556,10 @@ class ssd_model_pulp(AbstractModel):
         
         # Min max variable
         min_ssd = LpVariable(name='s', cat=LpContinuous)
-        print('Done with vars')
+        
         # Portfolio contraint
-        m += lpSum([price[s] * x[s] for s in stocks]) <= budget, 'portfolio_budget'
-        print('Loading SSD ctrs: ', len(z_index))
+        m += lpSum([price[s] * x[s] for s in stocks]) <= new_portfolio_value, 'portfolio_budget'
+        
         # Slack computation of SSD constraint
         ij_counter = 0
         X = [lpSum((r[j, k] * price[s] * x[s] for (k, s) in enumerate(stocks))) for j in range(n)]
@@ -557,11 +569,20 @@ class ssd_model_pulp(AbstractModel):
             if ij_counter % 1000 == 0:
                 print(ij_counter, '  at ', str((i, j)))
         
-        print('Finished SSD ctrs: ', len(z_index))
         for i in range(nY):
             exp_Y_shortfall_i = sum(np.maximum(0, Y[i] - Y[j]) for j in range(nY)) / nY
             m += ssd[i] == exp_Y_shortfall_i - (lpSum(z[i, j] for j in range(n)) / n), 'ssd_slack_%i' % (i)
             m += min_ssd <= ssd[i], 'min_max_ctr_%i' % (i)
+            
+            # Limit number of rebalancing sell transactions
+        if current_portfolio is not None:
+            delta_x = {}
+            for s in current_portfolio.assets:
+                position_s = current_portfolio.get_position(s)
+                delta_x[s] = LpVariable(f'delta_x{s}', 0.0, position_s, LpContinuous)
+                # solver.Add(x[s] - position_s <= delta_x[s])  # Buy
+                m += position_s - x[s] <= delta_x[s], f'Sell_limit_{s}'  # Sell
+            m += sum(delta_x[s] for s in current_portfolio.assets) <= portfolio_delta
         
         m += lpSum(ssd)  # min_ssd
         print('Done model')
@@ -599,8 +620,8 @@ class ssd_model_pulp(AbstractModel):
         
         Y = self.Y
         X = self.r.dot(allocation)
-        plt.hist(X, bins=30, color='b', alpha=0.9)
-        plt.hist(Y, bins=30, color='r', alpha=0.6)
+        plt.hist(X, bins=50, color='b', alpha=0.9)
+        plt.hist(Y, bins=50, color='r', alpha=0.6)
         plt.tight_layout()
         plt.show()
         return sol_out, stats

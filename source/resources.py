@@ -15,15 +15,6 @@ project_path = Path(__file__).parent.parent
 accounts_path = project_path / 'accounts/'
 
 
-def example(self, a):
-    self.a = a
-    print(self.__dict__)
-
-
-def register_example(p):
-    p.example = types.MethodType(example, p)
-
-
 class Portfolio:
     '''
     '''
@@ -45,9 +36,7 @@ class Portfolio:
     
     @property
     def assets(self):
-        if not hasattr(self, '_assets'):
-            self._assets = list(self._data.keys())
-        return self._assets
+        return self._data.keys()
     
     @classmethod
     def create_from_vectors(cls, assets, qty):
@@ -61,11 +50,13 @@ class Portfolio:
         p = copy.deepcopy(portfolio)
         for order in orders:
             if order.operation_type == OPERATION_SELL:
+                if (order.ticker not in p._data and order.qty > 0):
+                    return None
                 p._data[order.ticker]['qty'] -= order.qty
                 if p._data[order.ticker]['qty'] < 0:
                     return None
                 if p._data[order.ticker]['qty'] == 0:
-                    del p._data[orders.ticker]
+                    del p._data[order.ticker]
             if order.operation_type == OPERATION_BUY:
                 if order.ticker in p._data:
                     p._data[order.ticker]['qty'] += order.qty
@@ -109,7 +100,8 @@ class Order:
         self.operation_type = operation_type
     
     def __str__(self):
-        return f"{self.operation_type} {self.ticker} : {self.qty} : {self.price}"
+        return f"{self.operation_type} {self.ticker} : {self.qty}" + \
+            f" : {self.price:.4f}"
     
     def __repr__(self):
         return self.__str__()
@@ -119,7 +111,8 @@ class Account:
     def __init__(self, holder_name, opening_date):
         self.holder = holder_name
         self.cash_flow = pd.DataFrame(columns=["datetime", "amount", "type"])
-        self.transactions = pd.DataFrame(columns=["ticker", "datetime", "operation", "qty", "price"])
+        self.transactions = pd.DataFrame(
+            columns=["ticker", "datetime", "operation", "qty", "price"])
         self.portfolios = {opening_date: Portfolio.create_empty()}
         self.last_transaction = opening_date
         self.cash_onhand = 0
@@ -132,12 +125,13 @@ class Account:
         return self.portfolios[self.last_transaction]
     
     def deposit(self, deposit_date, amount):
-        self.cash_flow = self.cash_flow.append({
-            "datetime": deposit_date,
-            "amount": amount,
-            "type": "deposit",
-        },
-                                               ignore_index=True)
+        self.cash_flow = self.cash_flow.append(
+            {
+                "datetime": deposit_date,
+                "amount": amount,
+                "type": "deposit",
+            },
+            ignore_index=True)
         self.cash_onhand = self.cash_onhand + amount
     
     def withdraw(self, withdraw_date, amount):
@@ -146,12 +140,13 @@ class Account:
         '''
         if (self.cash_onhand < amount):
             return False
-        self.cash_flow = self.cash_flow.append({
-            "datetime": withdraw_date,
-            "amount": amount,
-            "type": "withdraw",
-        },
-                                               ignore_index=True)
+        self.cash_flow = self.cash_flow.append(
+            {
+                "datetime": withdraw_date,
+                "amount": amount,
+                "type": "withdraw",
+            },
+            ignore_index=True)
         self.cash_onhand = self.cash_onhand - amount
         return True
     
@@ -165,7 +160,8 @@ class Account:
         '''
         assert self.last_transaction <= transaction_date
         current_portfolio = self.portfolios[self.last_transaction]
-        new_portfolio = Portfolio.create_from_transaction(current_portfolio, orders)
+        new_portfolio = Portfolio.create_from_transaction(
+            current_portfolio, orders)
         if new_portfolio:
             self.last_transaction = transaction_date
             self.portfolios[transaction_date] = new_portfolio
@@ -179,15 +175,20 @@ class Account:
                         "price": order.price,
                     },
                     ignore_index=True)
-                self.cash_onhand -= order.qty * order.price
+                if order.operation_type == OPERATION_BUY:
+                    self.cash_onhand -= order.qty * order.price
+                elif order.operation_type == OPERATION_SELL:
+                    self.cash_onhand += order.qty * order.price
             return True
         return False
     
     def operations_history(self):
         history = []
         transactions_copy = self.transactions.copy()
-        transactions_copy['value'] = transactions_copy['price'] * transactions_copy['qty']
-        operations = transactions_copy.groupby(['datetime', 'operation'])['value'].agg('sum')
+        transactions_copy[
+            'value'] = transactions_copy['price'] * transactions_copy['qty']
+        operations = transactions_copy.groupby(['datetime', 'operation'
+                                                ])['value'].agg('sum')
         for ix, value in zip(operations.index, operations):
             op_datetime, op_type = ix
             signed_value = value if op_type == OPERATION_BUY else -value
@@ -202,7 +203,8 @@ class Account:
 
 
 def save_account(account):
-    backup_name = str(dt.datetime.now()).replace(".", "").replace(":", "").replace(" ", "").replace("-", "") + ".acc"
+    backup_name = str(dt.datetime.now()).replace(".", "").replace(
+        ":", "").replace(" ", "").replace("-", "") + ".acc"
     path_to_account = accounts_path / account.holder
     if not path_to_account.exists():
         path_to_account.mkdir()
@@ -215,7 +217,8 @@ def save_account(account):
     
     # Save classes for future migration
     path_portfolio_class = path_to_account / 'PortfolioClass'
-    pickle.dump(Portfolio, path_portfolio_class.open("wb"), pickle.HIGHEST_PROTOCOL)
+    pickle.dump(Portfolio, path_portfolio_class.open("wb"),
+                pickle.HIGHEST_PROTOCOL)
     path_account_class = path_to_account / 'AccoundClass'
     pickle.dump(Account, path_account_class.open("wb"), pickle.HIGHEST_PROTOCOL)
 
@@ -244,7 +247,9 @@ def load_account(account_name):
                 try:
                     backup_file = path_to_account / backup_name
                     account = pickle.load(backup_file.open("rb"))
-                    print(f"INFO: account backup {backup_name} loaded succesfuly.")
+                    print(
+                        f"INFO: account backup {backup_name} loaded succesfuly."
+                    )
                     return account
                 except Exception as identifier:
                     print(identifier)
@@ -265,9 +270,13 @@ def generate_orders(old_portfolio, new_portfolio, prices):
         old_position = old_portfolio.get_position(asset)
         new_position = new_portfolio.get_position(asset)
         if old_position < new_position:  # Buy
-            orders.append(Order(asset, new_position - old_position, prices[asset], OPERATION_BUY))
+            orders.append(
+                Order(asset, new_position - old_position, prices[asset],
+                      OPERATION_BUY))
         elif old_position > new_position:  # Sell
-            orders.append(Order(asset, old_position - new_position, prices[asset], OPERATION_SELL))
+            orders.append(
+                Order(asset, old_position - new_position, prices[asset],
+                      OPERATION_SELL))
     return orders
 
 
@@ -295,7 +304,8 @@ def build_account_history(portfolios, data_manager):
         assets_data = data_manager.get_prices(current_portfolio.assets)
         assert len(assets_data.columns) == len(current_portfolio.assets)
         start_date = dt.datetime(date.year, date.month, date.day)
-        end_date = portfolio_dates[date_ix + 1] if date_ix + 1 <= len(portfolio_dates) - 1 else dt.datetime.today()
+        end_date = portfolio_dates[date_ix + 1] if date_ix + 1 <= len(
+            portfolio_dates) - 1 else dt.datetime.today()
         end_date = dt.datetime(end_date.year, end_date.month, end_date.day)
         assets_data = assets_data[assets_data.index >= start_date]
         assets_data = assets_data[assets_data.index <= end_date]
@@ -303,7 +313,8 @@ def build_account_history(portfolios, data_manager):
             total_assets_d = 0
             prices_d = assets_data.loc[d]
             for asset in prices_d.index:
-                total_assets_d += prices_d.loc[asset] * current_portfolio.get_position(asset)
+                total_assets_d += prices_d.loc[
+                    asset] * current_portfolio.get_position(asset)
             account_history.append(total_assets_d)
             history_dates.append(d)
     

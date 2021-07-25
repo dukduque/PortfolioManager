@@ -20,10 +20,10 @@ sys.path.append(parent_path)
 
 # Data prep
 data_manager = DataManager('close.pkl', 'metadata.pkl')
-start_date = dt.datetime(2018, 2, 15)  # Initial date for the training period
-end_date = dt.datetime(2021, 2, 1)  # Final date for the training period
+start_date = dt.datetime(2019, 7, 13)  # Initial date for the training period
+end_date = dt.datetime(2021, 7, 13)  # Final date for the training period
 end_date_test = dt.datetime(2021, 9, 4)  # Final date for the backtesting period
-ini_capital = 0  # Initial capital available to be invested
+ini_capital = 2000  # Initial capital available to be invested
 
 # Training set
 stock_universe = data_manager.securities
@@ -34,15 +34,15 @@ current_price = data_manager.get_prices(returns.columns).loc[end_date]
 # Create model with default parameters
 account = load_account("Daniel Duque")
 base_portfolio = account.portfolio
-print(account)
+print(base_portfolio)
 opt_model = cvar_model_ortools(returns_array,
                                current_price,
-                               cvar_alpha=0.95,
+                               cvar_alpha=0.90,
                                current_portfolio=base_portfolio,
                                budget=ini_capital,
                                fractional=False,
                                portfolio_delta=0,
-                               ignore=[])
+                               ignore=['GME', 'GOVT', 'BND', 'BLV', 'AR', 'RRC', 'SM', 'CDEV'])
 '''
 Solve parametricly in beta
 '''

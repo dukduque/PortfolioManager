@@ -255,7 +255,7 @@ def create_database(stock_symbol='GOOGLE', start=None, end=None):
         tomorow = datetime.datetime.today() + datetime.timedelta(days=1)
         _end_date = end if end is not None else datetime.datetime.today()
         #db = stock.history(start=start, end=_end_date)
-        db = yf.download(stock_symbol, start=start, end=end)
+        db = yf.download(stock_symbol, start=start, end=end, threads=False)
         db = db.Close
         
         db = db.loc[~db.index.duplicated(keep='last')]
