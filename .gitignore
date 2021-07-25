@@ -23,3 +23,6 @@
 #Account files
 *.acc
 *accounts/
+
+# Unused files
+*broken/
