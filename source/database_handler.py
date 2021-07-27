@@ -35,7 +35,7 @@ sys.path.insert(0, parent_path)
 path_to_data = os.path.abspath(os.path.join(parent_path, 'data'))
 path_to_output = os.path.abspath(os.path.join(parent_path, 'output'))
 
-from source import popt_utils as popt_utils
+from source import util
 
 EMPTY_METADATA = {
     'name': '',
@@ -67,7 +67,9 @@ class DataManager:
         
         for asset in assets:
             if asset not in self.db.columns:
-                self.db = update_database_single_stock(self.db, asset, self.db_file, self.metadata_file)
+                self.db = update_database_single_stock(self.db, asset,
+                                                       self.db_file,
+                                                       self.metadata_file)
         return self.db[assets]
     
     def get_metadata(self, asset):
@@ -125,7 +127,8 @@ def save_sp500_tickers():
     '''
     https://pythonprogramming.net/sp500-company-list-python-programming-for-finance/
     '''
-    resp = requests.get('http://en.wikipedia.org/wiki/List_of_S%26P_500_companies')
+    resp = requests.get(
+        'http://en.wikipedia.org/wiki/List_of_S%26P_500_companies')
     soup = bs.BeautifulSoup(resp.text, 'lxml')
     table = soup.find('table', {'class': 'wikitable sortable'})
     tickers = {}
@@ -297,7 +300,11 @@ def quotien_diff(x):
     return pd.Series(y[1:] / y[:-1], index=x[1:].index)
 
 
-def get_returns(data_file, start_date='2000', end_date=dt.datetime.today(), stocks=[], outlier_return=10):
+def get_returns(data_file,
+                start_date='2000',
+                end_date=dt.datetime.today(),
+                stocks=[],
+                outlier_return=10):
     '''
     Computes the returns for stocks in the data file from
     a given year. All prices should be avaialbe to consider
@@ -310,7 +317,8 @@ def get_returns(data_file, start_date='2000', end_date=dt.datetime.today(), stoc
         db_r (DataFrame): dataframe with the returns
     '''
     assert data_file is None, 'Deprecated function'
-    assert start_date >= datetime.datetime(1970, 1, 1), 'Year should be from 1970'
+    assert start_date >= datetime.datetime(1970, 1,
+                                           1), 'Year should be from 1970'
     db = load_database(data_file)
     if len(stocks) > 0:
         db = db[db.columns.intersection(stocks)]
@@ -332,7 +340,8 @@ def update_database(db, n_proc, days_back):
     If n_proc > 1, runs a mutiprocess version of
     the function to speedup the colection of data.
     '''
-    ts = db.index[-days_back]  # get last date in DB  #TODO: what if last date was NaN
+    ts = db.index[
+        -days_back]  # get last date in DB  #TODO: what if last date was NaN
     ndb = pd.DataFrame()
     failed_stocks = []
     print('Updating %i stock with %i processors' % (len(db.columns), n_proc))
@@ -340,7 +349,10 @@ def update_database(db, n_proc, days_back):
         data_pool = mp.Pool(n_proc)
         stock_list = db.columns.to_list()
         n = 100
-        chunks = [stock_list[i * n:(i + 1) * n] for i in range((len(stock_list) + n - 1) // n)]
+        chunks = [
+            stock_list[i * n:(i + 1) * n]
+            for i in range((len(stock_list) + n - 1) // n)
+        ]
         for chunk in chunks:
             stock_tasks = itertools.product(chunk, [ts])
             mp_out = data_pool.map(create_database_mp, stock_tasks)
@@ -365,7 +377,10 @@ def update_database(db, n_proc, days_back):
     return out_db
 
 
-def update_database_single_stock(db, ticker_symbol, db_output_file='close.pkl', info_output_file='assets_listing.pkl'):
+def update_database_single_stock(db,
+                                 ticker_symbol,
+                                 db_output_file='close.pkl',
+                                 info_output_file='assets_listing.pkl'):
     
     db, status = add_stock(db, ticker_symbol, db.index[0], dt.datetime.today())
     if status:
@@ -375,7 +390,11 @@ def update_database_single_stock(db, ticker_symbol, db_output_file='close.pkl', 
     return db
 
 
-def download_all_data(DB_file_name, sp500=True, rusell1000=False, include_bonds=True, n_proc=4):
+def download_all_data(DB_file_name,
+                      sp500=True,
+                      rusell1000=False,
+                      include_bonds=True,
+                      n_proc=4):
     # symbols_df = web.get_nasdaq_symbols()
     # symbols_df = symbols_df[symbols_df.ETF == False]
     # symbols_df = symbols_df[symbols_df.ETF == False]
@@ -401,14 +420,17 @@ def download_all_data(DB_file_name, sp500=True, rusell1000=False, include_bonds=
     return close_data
 
 
-def run_update_process(db_file_in='close.pkl', db_file_out='close.pkl', n_proc=4, days_back=1):
+def run_update_process(db_file_in='close.pkl',
+                       db_file_out='close.pkl',
+                       n_proc=4,
+                       days_back=1):
     db = load_database(db_file_in)
     db = update_database(db, n_proc, days_back)
     save_database(db, db_file_out)
 
 
 if __name__ == '__main__':
-    args = popt_utils.dh_parse_arguments()
+    args = util.dh_parse_arguments()
     print(args)
     if args.a == 'u':
         today_ts = datetime.datetime.today()
