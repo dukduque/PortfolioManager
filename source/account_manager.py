@@ -2,18 +2,18 @@
 Various scripts to view and manage an account.
 '''
 import sys
-
-from resources import Portfolio, Account, Order, load_account, \
-    generate_orders, save_account
-from resources import OPERATION_BUY, OPERATION_SELL, \
-    build_account_history
-import datetime as dt
 import database_handler as dbh
+
+import datetime as dt
 from database_handler import DataManager
 import pandas as pd
 import numpy as np
 from collections import defaultdict
 from matplotlib import pyplot as plt
+from resources import Portfolio, Account, Order, load_account, \
+    generate_orders, save_account, OPERATION_BUY, OPERATION_SELL, \
+    build_account_history
+from opt_tools import cvar_model_pulp, cvar_model_ortools
 
 
 def read_account(account_name):
@@ -129,3 +129,74 @@ def piechart(account_name):
              startangle=45)
     axes.axis('equal')
     plt.show()
+
+
+'''
+Return the orders to be executed to rebalance the current portfolio in
+the `account`.
+'''
+
+
+def rebalance_account(account,
+                      additional_cash,
+                      start_date,
+                      end_date,
+                      data_file_name='close.pkl',
+                      metadata_file_name='metadata.pkl',
+                      print_portfolio=True,
+                      **kwargs):
+    
+    # Data prep
+    data_manager = DataManager(data_file_name, metadata_file_name)
+    returns = data_manager.get_returns(start_date, end_date)
+    returns_array = np.array(returns)
+    current_price = data_manager.get_prices(returns.columns).loc[end_date]
+    
+    # Read optimization params or set defaults.
+    cvar_alpha = 0.9
+    if 'cvar_alpha' in kwargs:
+        cvar_alpha = kwargs['cvar_alpha']
+        cvar_beta = 0.95
+    if 'cvar_beta' in kwargs:
+        cvar_beta = kwargs['cvar_beta']
+    fractional_stocks = False
+    if 'fractional_stocks' in kwargs:
+        fractional_stocks = kwargs['fractional_stocks']
+    ignored_securities = []
+    if 'ignored_securities' in kwargs:
+        ignored_securities = kwargs['ignored_securities']
+    
+    # Create model with default parameters
+    base_portfolio = account.portfolio
+    opt_model = cvar_model_ortools(returns_array,
+                                   current_price,
+                                   cvar_alpha=cvar_alpha,
+                                   current_portfolio=base_portfolio,
+                                   budget=additional_cash,
+                                   fractional=fractional_stocks,
+                                   portfolio_delta=0,
+                                   ignore=ignored_securities)
+    
+    cvar_sol1, cvar_stats1 = opt_model.change_cvar_params(cvar_beta=cvar_beta)
+    new_portfolio = cvar_sol1[cvar_sol1.qty > 0]
+    orders = generate_orders(
+        base_portfolio,
+        Portfolio.create_from_vectors(new_portfolio.index, new_portfolio.qty),
+        current_price)
+    if print_portfolio:
+        for o in orders:
+            print(o)
+        p = new_portfolio.copy()
+        p['name'] = [
+            data_manager.get_metadata(s)['name'] for s in new_portfolio.index
+        ]
+        p['sector'] = [
+            data_manager.get_metadata(s)['sector'] for s in new_portfolio.index
+        ]
+        p['subsector'] = [
+            data_manager.get_metadata(s)['subsector']
+            for s in new_portfolio.index
+        ]
+        print(p)
+        print(cvar_stats1)
+    return orders
