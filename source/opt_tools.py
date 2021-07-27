@@ -35,7 +35,13 @@ class AbstractModel(ABC):
 
 
 class markowitz_dro_wasserstein(AbstractModel):
-    def __init__(self, data, price, budget, delta_param, alpha_param, wasserstein_norm=1):
+    def __init__(self,
+                 data,
+                 price,
+                 budget,
+                 delta_param,
+                 alpha_param,
+                 wasserstein_norm=1):
         '''
         Model from Blanchet et al. 2017
         DRO Markovitz reformulation from Wasserstein distance.
@@ -57,8 +63,13 @@ class markowitz_dro_wasserstein(AbstractModel):
         
         sqrt_delta = np.sqrt(delta_param)
         m.addConstr((x.sum() == 1), 'portfolio_ctr')
-        m.addConstr((quicksum(x[j] * r[j] for j in range(k)) >= alpha_param - sqrt_delta * norm_p), 'return_ctr')
-        m.addConstr((p_SD * p_SD >= quicksum(cov[i, j] * x[i] * x[j] for i in range(k) for j in range(k))), 'SD_def')
+        m.addConstr(
+            (quicksum(x[j] * r[j]
+                      for j in range(k)) >= alpha_param - sqrt_delta * norm_p),
+            'return_ctr')
+        m.addConstr((p_SD * p_SD >= quicksum(cov[i, j] * x[i] * x[j]
+                                             for i in range(k)
+                                             for j in range(k))), 'SD_def')
         objfun = p_SD * p_SD + 2 * p_SD * sqrt_delta * norm_p + delta_param * norm_p * norm_p
         m.setObjective(objfun, GRB.MINIMIZE)
         
@@ -67,11 +78,13 @@ class markowitz_dro_wasserstein(AbstractModel):
             m.addConstrs((norm_p >= x[j] for j in range(k)), 'norm_def')
         elif wasserstein_norm == 2:
             regularizer_norm = 2
-            m.addConstr((norm_p * norm_p >= (quicksum(x[j] * x[j] for j in range(k)))), 'norm_def')
+            m.addConstr((norm_p * norm_p >=
+                         (quicksum(x[j] * x[j] for j in range(k)))), 'norm_def')
         elif wasserstein_norm == 'inf':
             regularizer_norm = 1
             #Note: this works since x>=0
-            m.addConstr((norm_p == (quicksum(x[j] for j in range(k)))), 'norm_def')
+            m.addConstr((norm_p == (quicksum(x[j] for j in range(k)))),
+                        'norm_def')
         else:
             raise 'wasserstain norm should be 1,2, or inf'
         
@@ -86,7 +99,14 @@ class markowitz_dro_wasserstein(AbstractModel):
 
 
 class cvar_model(AbstractModel):
-    def __init__(self, r, price, budget, cvar_alpha=0.95, cvar_beta=0.5, cvar_bound=0, fractional=True):
+    def __init__(self,
+                 r,
+                 price,
+                 budget,
+                 cvar_alpha=0.95,
+                 cvar_beta=0.5,
+                 cvar_bound=0,
+                 fractional=True):
         '''
             Expectation/CVaR model
             Let x be the number of stock to purchase, at price p.    
@@ -148,18 +168,22 @@ class cvar_model(AbstractModel):
         m.update()
         
         #Portfolio contraint
-        m.addConstr((quicksum(price[s] * x[s] for s in stocks) <= budget), 'portfolio_budget')
+        m.addConstr((quicksum(price[s] * x[s] for s in stocks) <= budget),
+                    'portfolio_budget')
         #Risk constraint (>= becuase is a loss, i.e., want to bound loss from below)
         cvar = eta + (1.0 / (n * (1 - cvar_alpha))) * z.sum()
         m.addConstr((-cvar >= cvar_bound), 'cvar_ctr')
         #CVaR linearlization
-        m.addConstrs((z[i] >= quicksum(-(r[i, j]) * price[s] * x[s] for (j, s) in enumerate(stocks)) - eta
+        m.addConstrs((z[i] >= quicksum(-(r[i, j]) * price[s] * x[s]
+                                       for (j, s) in enumerate(stocks)) - eta
                       for i in range(n)), 'cvar_linear')
         #Objective function
         #m.setObjective(quicksum(self.r_bar[j]*price[j]*x[j] for j in range(k)), GRB.MAXIMIZE)
-        exp_return = quicksum(self.r_bar[j] * price[s] * x[s] for (j, s) in enumerate(stocks))
+        exp_return = quicksum(self.r_bar[j] * price[s] * x[s]
+                              for (j, s) in enumerate(stocks))
         
-        m.setObjective(cvar_beta * exp_return - (1 - cvar_beta) * cvar, GRB.MAXIMIZE)
+        m.setObjective(cvar_beta * exp_return - (1 - cvar_beta) * cvar,
+                       GRB.MAXIMIZE)
         m.update()
         
         self.m = m
@@ -197,7 +221,10 @@ class cvar_model(AbstractModel):
         
         return sol_out, stats
     
-    def change_cvar_params(self, cvar_beta=None, cvar_alpha=None, cvar_bound=None):
+    def change_cvar_params(self,
+                           cvar_beta=None,
+                           cvar_alpha=None,
+                           cvar_bound=None):
         self.cvar_bound = cvar_bound if cvar_bound != None else self.cvar_bound
         self.cvar_beta = cvar_beta if cvar_beta != None else self.cvar_beta
         self.cvar_alpha = cvar_alpha if cvar_alpha != None else self.cvar_alpha
@@ -208,18 +235,30 @@ class cvar_model(AbstractModel):
         
         if cvar_bound is not None or cvar_bound is not None:
             self.m.remove(self.m.getConstrByName('cvar_ctr'))
-            self.cvar = self.eta + (1.0 / (self.n * (1 - cvar_alpha))) * self.z.sum()
+            self.cvar = self.eta + (1.0 / (self.n *
+                                           (1 - cvar_alpha))) * self.z.sum()
             self.m.addConstr((-self.cvar >= self.cvar_bound), 'cvar_ctr')
-            self.m.setObjective(self.cvar_beta * self.exp_return - (1 - cvar_beta) * self.cvar, GRB.MAXIMIZE)
+            self.m.setObjective(
+                self.cvar_beta * self.exp_return - (1 - cvar_beta) * self.cvar,
+                GRB.MAXIMIZE)
         
         if cvar_beta is not None:
-            self.m.setObjective(self.cvar_beta * self.exp_return - (1 - cvar_beta) * self.cvar, GRB.MAXIMIZE)
+            self.m.setObjective(
+                self.cvar_beta * self.exp_return - (1 - cvar_beta) * self.cvar,
+                GRB.MAXIMIZE)
         
         return self.optimize()
 
 
 class cvar_model_pulp(AbstractModel):
-    def __init__(self, r, price, budget, cvar_alpha=0.95, cvar_beta=0.5, cvar_bound=0, fractional=True):
+    def __init__(self,
+                 r,
+                 price,
+                 budget,
+                 cvar_alpha=0.95,
+                 cvar_beta=0.5,
+                 cvar_bound=0,
+                 fractional=True):
         '''
             Expectation/CVaR model (using PuLP)
             Let x be the number of stock to purchase, at price p.
@@ -266,10 +305,17 @@ class cvar_model_pulp(AbstractModel):
         
         # Number of shares to by
         varType = LpContinuous if fractional else LpInteger
-        x = LpVariable.dicts(name='x', indexs=stocks, lowBound=0, upBound=np.max(budget / price), cat=varType)
+        x = LpVariable.dicts(name='x',
+                             indexs=stocks,
+                             lowBound=0,
+                             upBound=np.max(budget / price),
+                             cat=varType)
         
         # Auxiliary variable to compute shortfall in cvar
-        z = LpVariable.dicts(name='z', indexs=range(n), lowBound=0, cat=LpContinuous)
+        z = LpVariable.dicts(name='z',
+                             indexs=range(n),
+                             lowBound=0,
+                             cat=LpContinuous)
         
         # Value at risk
         eta = LpVariable(name='eta', cat=LpContinuous)
@@ -277,7 +323,8 @@ class cvar_model_pulp(AbstractModel):
         # cvar_bound = m.addVar(lb=-GRB.INFINITY, vtype=GRB.CONTINUOUS, name='cvar')
         
         # Portfolio contraint
-        m += lpSum([price[s] * x[s] for s in stocks]) <= budget, 'portfolio_budget'
+        m += lpSum([price[s] * x[s]
+                    for s in stocks]) <= budget, 'portfolio_budget'
         
         # Risk constraint (>= becuase is a loss, i.e., want to bound loss from below)
         cvar = eta + (1.0 / (n * (1 - cvar_alpha))) * lpSum(z)
@@ -286,11 +333,13 @@ class cvar_model_pulp(AbstractModel):
         # CVaR linearlization
         for i in range(n):
             m += z[i] >= lpSum(
-                (-(r[i, j]) * price[s] * x[s] for (j, s) in enumerate(stocks))) - eta, 'cvar_linear_%i' % (i)
+                (-(r[i, j]) * price[s] * x[s]
+                 for (j, s) in enumerate(stocks))) - eta, 'cvar_linear_%i' % (i)
         
         # Objective function
         # m.setObjective(quicksum(self.r_bar[j]*price[j]*x[j] for j in range(k)), GRB.MAXIMIZE)
-        exp_return = lpSum([self.r_bar[j] * price[s] * x[s] for (j, s) in enumerate(stocks)])
+        exp_return = lpSum(
+            [self.r_bar[j] * price[s] * x[s] for (j, s) in enumerate(stocks)])
         
         m += cvar_beta * exp_return - (1 - cvar_beta) * cvar
         
@@ -329,7 +378,10 @@ class cvar_model_pulp(AbstractModel):
         
         return sol_out, stats
     
-    def change_cvar_params(self, cvar_beta=None, cvar_alpha=None, cvar_bound=None):
+    def change_cvar_params(self,
+                           cvar_beta=None,
+                           cvar_alpha=None,
+                           cvar_bound=None):
         self.cvar_bound = cvar_bound if cvar_bound is not None else self.cvar_bound
         self.cvar_beta = cvar_beta if cvar_beta is not None else self.cvar_beta
         self.cvar_alpha = cvar_alpha if cvar_alpha is not None else self.cvar_alpha
@@ -339,12 +391,16 @@ class cvar_model_pulp(AbstractModel):
         print('CVaR_bound: %5.3f' % (self.cvar_bound))
         
         if cvar_bound is not None or cvar_alpha is not None:
-            self.cvar = self.eta + (1.0 / (self.n * (1 - self.cvar_alpha))) * lpSum(self.z)
+            self.cvar = self.eta + (1.0 /
+                                    (self.n *
+                                     (1 - self.cvar_alpha))) * lpSum(self.z)
             self.m.constraints['cvar_ctr'] = -self.cvar >= self.cvar_bound
-            self.m.objective = self.cvar_beta * self.exp_return - (1 - self.cvar_beta) * self.cvar
+            self.m.objective = self.cvar_beta * self.exp_return - (
+                1 - self.cvar_beta) * self.cvar
         
         if cvar_beta is not None:
-            self.m.objective = self.cvar_beta * self.exp_return - (1 - self.cvar_beta) * self.cvar
+            self.m.objective = self.cvar_beta * self.exp_return - (
+                1 - self.cvar_beta) * self.cvar
         
         return self.optimize()
 
@@ -364,14 +420,16 @@ class cvar_model_ortools(AbstractModel):
                  must_buy={}):
         
         # Data prep
-        assert len(r) > 0 and len(
-            r[0]) == len(price), 'The number of securities in the returns array must match that in the price array'
+        assert len(r) > 0 and len(r[0]) == len(
+            price
+        ), 'The number of securities in the returns array must match that in the price array'
         self.r_bar = np.mean(r, axis=0)
         self.cov = np.cov(r, rowvar=False)
         n = len(r)  # Number of returns
         stocks = price.index.to_list()
-        portfolio_value = 0 if current_portfolio is None else sum(price[s] * current_portfolio.get_position(s)
-                                                                  for s in current_portfolio.assets)
+        portfolio_value = 0 if current_portfolio is None else sum(
+            price[s] * current_portfolio.get_position(s)
+            for s in current_portfolio.assets)
         new_portfolio_value = portfolio_value + budget
         solver = pywraplp.Solver.CreateSolver('CBC')
         
@@ -380,7 +438,8 @@ class cvar_model_ortools(AbstractModel):
         for s in stocks:
             x_lb = 0 if s not in must_buy else must_buy[s]
             x_ub = np.max(new_portfolio_value /
-                          price) if s not in ignore else np.maximum(0.0, current_portfolio.get_position(s))
+                          price) if s not in ignore else np.maximum(
+                              0.0, current_portfolio.get_position(s))
             if fractional or current_portfolio.position_is_fractional(s):
                 x[s] = solver.NumVar(x_lb, x_ub, f'x{s}')
             else:
@@ -398,16 +457,20 @@ class cvar_model_ortools(AbstractModel):
         cash = solver.NumVar(0, new_portfolio_value, 'cash')
         
         # Portfolio budget contraint
-        solver.Add(sum(price[s] * x[s] for s in stocks) + cash == new_portfolio_value)
+        solver.Add(
+            sum(price[s] * x[s] for s in stocks) + cash == new_portfolio_value)
         
         # Risk constraint (>= becuase is a loss, i.e., want to bound loss from below)
-        cvar = eta + (1.0 / (n * (1 - cvar_alpha))) * sum(z[i] for i in range(n))
+        cvar = eta + (1.0 / (n * (1 - cvar_alpha))) * sum(z[i]
+                                                          for i in range(n))
         #m += -cvar >= cvar_bound, 'cvar_ctr'
         
         # CVaR linearlization
         for i in range(n):
-            solver.Add(z[i] >= sum((-(r[i, j]) * price[s] * x[s] / new_portfolio_value
-                                    for (j, s) in enumerate(stocks))) - cash / new_portfolio_value - eta)
+            solver.Add(
+                z[i] >= sum((-(r[i, j]) * price[s] * x[s] / new_portfolio_value
+                             for (j, s) in enumerate(stocks))) -
+                cash / new_portfolio_value - eta)
         
         # Limit number of rebalancing sell transactions
         if current_portfolio is not None:
@@ -417,10 +480,13 @@ class cvar_model_ortools(AbstractModel):
                 delta_x[s] = solver.NumVar(0.0, position_s, f'delta_x{s}')
                 # solver.Add(x[s] - position_s <= delta_x[s])  # Buy
                 solver.Add(position_s - x[s] <= delta_x[s])  # Sell
-            solver.Add(sum(delta_x[s] for s in current_portfolio.assets) <= portfolio_delta)
+            solver.Add(
+                sum(delta_x[s]
+                    for s in current_portfolio.assets) <= portfolio_delta)
         
         # Objective function
-        exp_return = sum(self.r_bar[j] * price[s] * x[s] / new_portfolio_value for (j, s) in enumerate(stocks))
+        exp_return = sum(self.r_bar[j] * price[s] * x[s] / new_portfolio_value
+                         for (j, s) in enumerate(stocks))
         exp_return = exp_return  # + cash / new_portfolio_value
         solver.Maximize(cvar_beta * exp_return - (1 - cvar_beta) * cvar)
         
@@ -449,7 +515,8 @@ class cvar_model_ortools(AbstractModel):
         self.solver.Solve(p1)
         print('Objective func value:', self.solver.Objective().Value())
         print('Cash on hand:', self.cash.solution_value())
-        x_sol = np.round(np.array([self.x[s].solution_value() for s in self.stocks]), 6)
+        x_sol = np.round(
+            np.array([self.x[s].solution_value() for s in self.stocks]), 6)
         allocation = x_sol * self.price / np.sum(self.price * x_sol)
         sol_out = pd.DataFrame({
             'price': self.price,
@@ -467,7 +534,10 @@ class cvar_model_ortools(AbstractModel):
         
         return sol_out, stats
     
-    def change_cvar_params(self, cvar_beta=None, cvar_alpha=None, cvar_bound=None):
+    def change_cvar_params(self,
+                           cvar_beta=None,
+                           cvar_alpha=None,
+                           cvar_bound=None):
         self.cvar_bound = cvar_bound if cvar_bound is not None else self.cvar_bound
         self.cvar_beta = cvar_beta if cvar_beta is not None else self.cvar_beta
         self.cvar_alpha = cvar_alpha if cvar_alpha is not None else self.cvar_alpha
@@ -477,13 +547,18 @@ class cvar_model_ortools(AbstractModel):
         print('CVaR_bound: %5.3f' % (self.cvar_bound))
         
         if cvar_bound is not None or cvar_alpha is not None:
-            self.cvar = self.eta + (1.0 / (self.n * (1 - self.cvar_alpha))) * sum(self.z[i] for i in range(self.n))
+            self.cvar = self.eta + (1.0 / (self.n *
+                                           (1 - self.cvar_alpha))) * sum(
+                                               self.z[i] for i in range(self.n))
             # self.m.constraints['cvar_ctr'] = -self.cvar >= self.cvar_bound
-            self.solver.Maximize(self.cvar_beta * self.exp_return - (1 - self.cvar_beta) * self.cvar)
-            self.m.objective = self.cvar_beta * self.exp_return - (1 - self.cvar_beta) * self.cvar
+            self.solver.Maximize(self.cvar_beta * self.exp_return -
+                                 (1 - self.cvar_beta) * self.cvar)
+            self.m.objective = self.cvar_beta * self.exp_return - (
+                1 - self.cvar_beta) * self.cvar
         
         if cvar_beta is not None:
-            self.solver.Maximize(self.cvar_beta * self.exp_return - (1 - self.cvar_beta) * self.cvar)
+            self.solver.Maximize(self.cvar_beta * self.exp_return -
+                                 (1 - self.cvar_beta) * self.cvar)
         
         return self.optimize()
 
@@ -520,14 +595,16 @@ class ssd_model_pulp(AbstractModel):
         self.r_bar = np.mean(r, axis=0)
         self.cov = np.cov(r, rowvar=False)
         
-        portfolio_value = 0 if current_portfolio is None else sum(price[s] * current_portfolio.get_position(s)
-                                                                  for s in current_portfolio.assets)
+        portfolio_value = 0 if current_portfolio is None else sum(
+            price[s] * current_portfolio.get_position(s)
+            for s in current_portfolio.assets)
         new_portfolio_value = portfolio_value + budget
         
         Y = benchmark * new_portfolio_value  # Distribution of the benchmark
         target_percentiles = [i * max_percentile / 10 for i in range(1, 11)]
         print(target_percentiles)
-        Y = np.percentile(Y, q=target_percentiles)  # [i * 1 for i in range(1, 101)])
+        Y = np.percentile(
+            Y, q=target_percentiles)  # [i * 1 for i in range(1, 101)])
         Y.sort()
         print(Y)
         
@@ -543,13 +620,21 @@ class ssd_model_pulp(AbstractModel):
         for s in stocks:
             x_lb = 0 if s not in must_buy else must_buy[s]
             x_ub = np.max(new_portfolio_value /
-                          price) if s not in ignore else np.maximum(0.0, current_portfolio.get_position(s))
-            varType = LpContinuous if fractional or current_portfolio.position_is_fractional(s) else LpInteger
-            x[s] = LpVariable(name=f'x_{s}', lowBound=x_lb, upBound=x_ub, cat=varType)
+                          price) if s not in ignore else np.maximum(
+                              0.0, current_portfolio.get_position(s))
+            varType = LpContinuous if fractional or current_portfolio.position_is_fractional(
+                s) else LpInteger
+            x[s] = LpVariable(name=f'x_{s}',
+                              lowBound=x_lb,
+                              upBound=x_ub,
+                              cat=varType)
         
         # Auxiliary variable to compute shortfall in SSD
         z_index = list(product(range(nY), range(n)))
-        z = LpVariable.dicts(name='z', indexs=z_index, lowBound=0, cat=LpContinuous)
+        z = LpVariable.dicts(name='z',
+                             indexs=z_index,
+                             lowBound=0,
+                             cat=LpContinuous)
         
         # Slack variable of the SSD constraint
         ssd = LpVariable.dicts(name='s', indexs=range(nY), cat=LpContinuous)
@@ -558,11 +643,15 @@ class ssd_model_pulp(AbstractModel):
         min_ssd = LpVariable(name='s', cat=LpContinuous)
         
         # Portfolio contraint
-        m += lpSum([price[s] * x[s] for s in stocks]) <= new_portfolio_value, 'portfolio_budget'
+        m += lpSum([price[s] * x[s]
+                    for s in stocks]) <= new_portfolio_value, 'portfolio_budget'
         
         # Slack computation of SSD constraint
         ij_counter = 0
-        X = [lpSum((r[j, k] * price[s] * x[s] for (k, s) in enumerate(stocks))) for j in range(n)]
+        X = [
+            lpSum((r[j, k] * price[s] * x[s] for (k, s) in enumerate(stocks)))
+            for j in range(n)
+        ]
         for (i, j) in z_index:
             m += z[i, j] >= Y[i] - X[j], 'ctr_z_%i_%i' % (i, j)
             ij_counter += 1
@@ -570,8 +659,11 @@ class ssd_model_pulp(AbstractModel):
                 print(ij_counter, '  at ', str((i, j)))
         
         for i in range(nY):
-            exp_Y_shortfall_i = sum(np.maximum(0, Y[i] - Y[j]) for j in range(nY)) / nY
-            m += ssd[i] == exp_Y_shortfall_i - (lpSum(z[i, j] for j in range(n)) / n), 'ssd_slack_%i' % (i)
+            exp_Y_shortfall_i = sum(
+                np.maximum(0, Y[i] - Y[j]) for j in range(nY)) / nY
+            m += ssd[i] == exp_Y_shortfall_i - (lpSum(z[i, j]
+                                                      for j in range(n)) /
+                                                n), 'ssd_slack_%i' % (i)
             m += min_ssd <= ssd[i], 'min_max_ctr_%i' % (i)
             
             # Limit number of rebalancing sell transactions
@@ -579,10 +671,12 @@ class ssd_model_pulp(AbstractModel):
             delta_x = {}
             for s in current_portfolio.assets:
                 position_s = current_portfolio.get_position(s)
-                delta_x[s] = LpVariable(f'delta_x{s}', 0.0, position_s, LpContinuous)
+                delta_x[s] = LpVariable(f'delta_x{s}', 0.0, position_s,
+                                        LpContinuous)
                 # solver.Add(x[s] - position_s <= delta_x[s])  # Buy
                 m += position_s - x[s] <= delta_x[s], f'Sell_limit_{s}'  # Sell
-            m += sum(delta_x[s] for s in current_portfolio.assets) <= portfolio_delta
+            m += sum(delta_x[s]
+                     for s in current_portfolio.assets) <= portfolio_delta
         
         m += lpSum(ssd)  # min_ssd
         print('Done model')
