@@ -14,8 +14,8 @@ Setup paths
 '''
 
 import shutil
-import pandas_datareader.data as web  # yahoo or av-daily, but glichy
-import yfinance as yf  # Works awsome!
+from numpy.testing._private.utils import raises
+import yfinance as yf
 import requests
 import pickle
 import datetime
@@ -33,7 +33,6 @@ path_to_file = os.path.dirname(os.path.realpath(__file__))
 parent_path = os.path.abspath(os.path.join(path_to_file, os.pardir))
 sys.path.insert(0, parent_path)
 path_to_data = os.path.abspath(os.path.join(parent_path, 'data'))
-path_to_output = os.path.abspath(os.path.join(parent_path, 'output'))
 
 from source import util
 
@@ -43,6 +42,14 @@ EMPTY_METADATA = {
     'subsector': '',
     'market_cap': '',
 }
+
+
+def set_data_path(new_path_to_data):
+    new_path = Path(new_path_to_data)
+    if (not new_path.is_dir()):
+        raises(f'{new_path} is no a valid path.')
+    global path_to_data
+    path_to_data = new_path.absolute()
 
 
 class DataManager:
@@ -239,7 +246,7 @@ def safe_metadata(metadata, metadata_file):
         pickle.dump(metadata, handle, pickle.HIGHEST_PROTOCOL)
 
 
-def create_database(stock_symbol='GOOGLE', start=None, end=None):
+def create_database(stock_symbol, start=None, end=None):
     '''
     Creates a dataframe with one stock.
     Args:
@@ -253,11 +260,9 @@ def create_database(stock_symbol='GOOGLE', start=None, end=None):
     print(stock_symbol, start, end)
     
     try:
-        
         stock = yf.Ticker(stock_symbol)
         tomorow = datetime.datetime.today() + datetime.timedelta(days=1)
         _end_date = end if end is not None else datetime.datetime.today()
-        #db = stock.history(start=start, end=_end_date)
         db = yf.download(stock_symbol, start=start, end=end, threads=False)
         db = db.Close
         
@@ -372,9 +377,14 @@ def update_database(db, n_proc, days_back):
             except Exception as e:
                 print(e)
     print(failed_stocks)
-    out_db = pd.concat((db, ndb), axis=0, join='outer')
-    out_db = out_db.loc[~out_db.index.duplicated(keep='last')]
-    return out_db
+    # Create new rows with NaN values
+    for new_date in ndb.index:
+        print(f'Crete row for {new_date}')
+        if new_date not in db.index:
+            db.loc[new_date] = [np.nan] * len(db.columns)
+    # Update NaN values
+    db.update(ndb, overwrite=False)
+    return db
 
 
 def update_database_single_stock(db,
