@@ -14,7 +14,6 @@ Setup paths
 '''
 
 import shutil
-from numpy.testing._private.utils import raises
 import yfinance as yf
 import requests
 import pickle
@@ -47,7 +46,7 @@ EMPTY_METADATA = {
 def set_data_path(new_path_to_data):
     new_path = Path(new_path_to_data)
     if (not new_path.is_dir()):
-        raises(f'{new_path} is no a valid path.')
+        raise f'{new_path} is no a valid path.'
     global path_to_data
     path_to_data = new_path.absolute()
 
