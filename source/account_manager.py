@@ -18,7 +18,6 @@ from opt_tools import cvar_model_pulp, cvar_model_ortools
 
 def read_account(account_name):
     account = load_account(account_name)
-    print(account)
 
 
 def benchmark(account_name, benchmark_symbol='SPY'):
@@ -53,8 +52,6 @@ def benchmark(account_name, benchmark_symbol='SPY'):
         sp500_portfolios, data_manager)
     history_dates, history_values = build_account_history(
         account.portfolios, data_manager)
-    #print(history_dates)
-    #print(net_transactions.keys())
     
     transaction_dates = list(net_transactions.keys())
     transaction_dates.sort()
@@ -131,12 +128,6 @@ def piechart(account_name):
     plt.show()
 
 
-'''
-Return the orders to be executed to rebalance the current portfolio in
-the `account`.
-'''
-
-
 def rebalance_account(account,
                       additional_cash,
                       start_date,
@@ -145,6 +136,10 @@ def rebalance_account(account,
                       metadata_file_name='metadata.pkl',
                       print_portfolio=True,
                       **kwargs):
+    '''
+    Return the orders to be executed to rebalance the current portfolio in
+    the `account`.
+    '''
     
     # Data prep
     data_manager = DataManager(data_file_name, metadata_file_name)

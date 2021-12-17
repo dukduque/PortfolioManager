@@ -1,15 +1,15 @@
 """
 This module contains various data structurs for data manipulation, optimization, and backtesting
 """
-import os
-import sys
 import datetime as dt
 import pandas as pd
 import numpy as np
 import copy
 import pickle
+import math
 import types
 from pathlib import Path
+from collections import defaultdict
 
 project_path = Path(__file__).parent.parent
 accounts_path = project_path / 'accounts/'
@@ -202,13 +202,24 @@ class Account:
         return s
 
 
+def set_account_path(new_path_to_account):
+    global accounts_path
+    accounts_path = new_path_to_account
+
+
+def create_new_account(account_name, opening_date=dt.datetime.now):
+    account = Account(account_name, opening_date)
+    save_account(account)
+    return account
+
+
 def save_account(account):
     backup_name = str(dt.datetime.now()).replace(".", "").replace(
         ":", "").replace(" ", "").replace("-", "") + ".acc"
     path_to_account = accounts_path / account.holder
     if not path_to_account.exists():
         path_to_account.mkdir()
-    # TODO: Add verification step so that accounts don't overwrite themself.
+    
     index_file = path_to_account / 'index.txt'
     with open(index_file, "a") as writer:
         writer.write(backup_name)
@@ -297,6 +308,7 @@ def build_account_history(portfolios, data_manager):
     portfolio_dates = list(portfolios.keys())
     portfolio_dates.sort()
     current_portfolio = None
+    last_valid_price = defaultdict(float)
     for date_ix, date in enumerate(portfolio_dates):
         current_portfolio = portfolios[date]
         if len(current_portfolio.assets) == 0:
@@ -309,11 +321,15 @@ def build_account_history(portfolios, data_manager):
         end_date = dt.datetime(end_date.year, end_date.month, end_date.day)
         assets_data = assets_data[assets_data.index >= start_date]
         assets_data = assets_data[assets_data.index <= end_date]
+        
         for d in assets_data.index:
             total_assets_d = 0
             prices_d = assets_data.loc[d]
             for asset in prices_d.index:
-                total_assets_d += prices_d.loc[
+                asset_price_at_d = prices_d.loc[asset]
+                if (not math.isnan(asset_price_at_d)):
+                    last_valid_price[asset] = asset_price_at_d
+                total_assets_d += last_valid_price[
                     asset] * current_portfolio.get_position(asset)
             account_history.append(total_assets_d)
             history_dates.append(d)

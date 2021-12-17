@@ -32,7 +32,6 @@ path_to_file = os.path.dirname(os.path.realpath(__file__))
 parent_path = os.path.abspath(os.path.join(path_to_file, os.pardir))
 sys.path.insert(0, parent_path)
 path_to_data = os.path.abspath(os.path.join(parent_path, 'data'))
-
 from source import util
 
 EMPTY_METADATA = {
@@ -123,6 +122,32 @@ class DataManager:
         
         self._returns = db_r
         return db_r
+    
+    def repair_data(self, stock_symbol, start_date):
+        if stock_symbol not in self.db.columns:
+            return
+        stock = yf.Ticker(stock_symbol)
+        trials = 3
+        for repairing_date in reversed(self.db.index):
+            if repairing_date < start_date:
+                break
+            if np.isnan(self.db.loc[repairing_date, stock_symbol]):
+                time.sleep(np.random.uniform(0, 0.1))
+                update = stock.history(start=repairing_date,
+                                       end=repairing_date +
+                                       dt.timedelta(days=1)).Close
+                if repairing_date in update.index and update.loc[
+                        repairing_date] != np.nan:
+                    self.db.loc[repairing_date,
+                                stock_symbol] = update.loc[repairing_date]
+                else:
+                    print('Not repaired', stock_symbol, repairing_date)
+                    trials -= 1
+                    if trials == 0:
+                        print('Still nan')
+                        break
+        
+        save_database(self.db, self.db_file)
     
     @property
     def securities(self):
@@ -262,6 +287,7 @@ def create_database(stock_symbol, start=None, end=None):
         stock = yf.Ticker(stock_symbol)
         tomorow = datetime.datetime.today() + datetime.timedelta(days=1)
         _end_date = end if end is not None else datetime.datetime.today()
+        time.sleep(np.random.uniform(0, 0.1))
         db = yf.download(stock_symbol, start=start, end=end, threads=False)
         db = db.Close
         

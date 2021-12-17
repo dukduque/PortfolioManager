@@ -1,0 +1,1 @@
+Set PYTHONPATH=path/to/PortfolioManager/source
