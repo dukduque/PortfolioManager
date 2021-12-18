@@ -1,6 +1,6 @@
 ## <span style="color:red"> Disclaimer: NOT FINANCIAL ADVICE </span>
 
-**This software is for informational and educational purposes only and does not constitute or intend to be financial advice. Investing is risky, do your own research and consult a financial advisor for the purpose of making and investment decision or otherwise.**
+**This software is for informational and educational purposes only and does not constitute or intend to be financial advice. Investing is risky, do your own research and consult a financial advisor for the purpose of making an investment decision or otherwise.**
 
 # Portfolio Manager
 
