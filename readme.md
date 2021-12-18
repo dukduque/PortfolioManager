@@ -1,6 +1,6 @@
 ## <span style="color:red"> Disclaimer: NOT FINANCIAL ADVICE </span>
 
-**This software is for informational and educational purposes only and does not constitute or intend to be financial advice. Investing is risky, do your own research and consult a financial advisor for the puropose of making and investment decision or otherwise.**
+**This software is for informational and educational purposes only and does not constitute or intend to be financial advice. Investing is risky, do your own research and consult a financial advisor for the purpose of making and investment decision or otherwise.**
 
 # Portfolio Manager
 
@@ -32,7 +32,7 @@ account.update_account(dt.datetime(2021, 12, 15, 14, 0), [
 save_account(account)
 ```
 
-## Reblanace the portfolio
+## Rebalance the portfolio
 
 To rebalance the current portfolio, first load the account previously created and use the `rebalance_account` function from the `account_manager.py` module. This will indicate the orders to (manually) execute.
 
