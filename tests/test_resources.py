@@ -1,6 +1,7 @@
-from source.resources import OPERATION_BUY, OPERATION_SELL, Portfolio, Order,\
-    Account
-import pytest
+from resources import OPERATION_BUY, OPERATION_SELL, Portfolio, Order,\
+    Account, create_new_account, load_account, set_account_path
+import datetime as dt
+from pathlib import Path
 '''
 =============================================
 Portfolio class tests
@@ -70,9 +71,113 @@ Order class tests
 
 def test_order_str():
     order = Order('A', 1, 1.0, OPERATION_BUY)
-    print(order)
     assert f"{order}" == "Buy A : 1 : 1.0000"
     order = Order('A', 1, 1.0001, OPERATION_BUY)
     assert f"{order}" == "Buy A : 1 : 1.0001"
     order = Order('A', 1, 1.00005, OPERATION_BUY)
     assert f"{order}" == "Buy A : 1 : 1.0001"
+
+
+'''
+=============================================
+Account class tests
+=============================================
+'''
+
+
+def test_new_account():
+    account = Account('holder', dt.datetime.now())
+    assert account.last_transaction <= dt.datetime.now()
+    assert len(account.portfolio.assets) == 0
+
+
+def test_account_deposit():
+    account = Account('holder', dt.datetime.now())
+    deposit_date = dt.datetime(2021, 12, 12, 10, 10)
+    assert account.deposit(deposit_date, 1_000)
+    assert account.cash_onhand == 1_000
+
+
+def test_account_withdraw():
+    account = Account('holder', dt.datetime.now())
+    deposit_date = dt.datetime(2021, 12, 12, 10, 10)
+    account.deposit(deposit_date, 1_000)
+    withdraw_date = dt.datetime(2021, 12, 12, 10, 14)
+    
+    assert not account.withdraw(withdraw_date, 10_000)
+    assert account.cash_onhand == 1_000
+    
+    assert account.withdraw(withdraw_date, 100)
+    assert account.cash_onhand == 900
+
+
+def test_account_update():
+    account = Account('holder', dt.datetime.now())
+    account.deposit(dt.datetime(2021, 12, 12, 10, 10), 1_000)
+    
+    update_status = account.update_account(dt.datetime(2021, 12, 20, 9, 35),
+                                           orders=[
+                                               Order('ABC', 100, 1.2,
+                                                     OPERATION_BUY),
+                                               Order('XYZ', 1, 453.2,
+                                                     OPERATION_BUY)
+                                           ])
+    
+    assert update_status
+    assert account.portfolio.get_position('ABC') == 100
+    assert account.portfolio.get_position('XYZ') == 1
+    assert account.cash_onhand == 1_000 - 1.2 * 100 - 453.2
+
+
+def test_account_update_sell():
+    account = Account('holder', dt.datetime.now())
+    account.deposit(dt.datetime(2021, 12, 12, 10, 10), 1_000)
+    account.update_account(dt.datetime(2021, 12, 20, 9, 30),
+                           orders=[
+                               Order('ABC', 100, 1.2, OPERATION_BUY),
+                               Order('XYZ', 1000, 0.2, OPERATION_BUY)
+                           ])
+    initial_cash_onhand = account.cash_onhand
+    
+    update_status = account.update_account(dt.datetime(2021, 12, 21, 9, 30),
+                                           orders=[
+                                               Order('ABC', 10, 2.2,
+                                                     OPERATION_BUY),
+                                               Order('XYZ', 10, 1.0,
+                                                     OPERATION_SELL)
+                                           ])
+    assert update_status
+    assert account.portfolio.get_position('ABC') == 110
+    assert account.portfolio.get_position('XYZ') == 990
+    assert account.cash_onhand == initial_cash_onhand - 10 * 2.2 + 10 * 1.0
+
+
+def test_account_update_sells_missing_asset():
+    account = Account('holder', dt.datetime.now())
+    account.deposit(dt.datetime(2021, 12, 12, 10, 10), 1_000)
+    account.update_account(dt.datetime(2021, 12, 20, 9, 30),
+                           orders=[Order('ABC', 100, 1.2, OPERATION_BUY)])
+    initial_cash_onhand = account.cash_onhand
+    
+    update_status = account.update_account(dt.datetime(2021, 12, 21, 9, 30),
+                                           orders=[
+                                               Order('ABC', 10, 2.2,
+                                                     OPERATION_BUY),
+                                               Order('XYZ', 10, 2.2,
+                                                     OPERATION_SELL)
+                                           ])
+    assert not update_status
+    assert account.cash_onhand == initial_cash_onhand
+    assert account.portfolio.get_position('ABC') == 100
+    assert account.portfolio.get_position('XYZ') == 0
+
+
+def test_load_account():
+    set_account_path(Path(__file__).parent / 'test_data/')
+    create_new_account('holder_a', dt.datetime.now)
+    
+    account = load_account('holder_a')
+    assert account.holder == 'holder_a'
+    
+    account = load_account('holder_b')
+    assert account is None

@@ -133,10 +133,11 @@ class Account:
             },
             ignore_index=True)
         self.cash_onhand = self.cash_onhand + amount
+        return True
     
     def withdraw(self, withdraw_date, amount):
         '''
-        Withdraw monay from cash onhand.
+        Withdraw money from cash onhand.
         '''
         if (self.cash_onhand < amount):
             return False
@@ -152,11 +153,11 @@ class Account:
     
     def update_account(self, transaction_date, orders):
         '''
-        Updates the account with orders that were succesfull and returns
+        Updates the account with orders that were successful and returns
         True if the update was successful.
         Args:
         transaction_date (datetime): date of the transaction.
-        orders (list of Order): list of excuted orders.
+        orders (list of Order): list of executed orders.
         '''
         assert self.last_transaction <= transaction_date
         current_portfolio = self.portfolios[self.last_transaction]
@@ -208,6 +209,9 @@ def set_account_path(new_path_to_account):
 
 
 def create_new_account(account_name, opening_date=dt.datetime.now):
+    '''
+    Creates a new account instance an saves it at `accounts_path/account_name`
+    '''
     account = Account(account_name, opening_date)
     save_account(account)
     return account
@@ -230,24 +234,17 @@ def save_account(account):
     path_portfolio_class = path_to_account / 'PortfolioClass'
     pickle.dump(Portfolio, path_portfolio_class.open("wb"),
                 pickle.HIGHEST_PROTOCOL)
-    path_account_class = path_to_account / 'AccoundClass'
+    path_account_class = path_to_account / 'AccountClass'
     pickle.dump(Account, path_account_class.open("wb"), pickle.HIGHEST_PROTOCOL)
 
 
 def load_account(account_name):
     path_to_account = accounts_path / account_name
     path_portfolio_class = path_to_account / 'PortfolioClass'
-    path_account_class = path_to_account / 'AccoundClass'
+    path_account_class = path_to_account / 'AccountClass'
     if not path_to_account.exists():
         return None
-    '''
-    Portfolio = None
-    Account = None
-    if path_portfolio_class.exists() and path_account_class.exists():
-        Portfolio = pickle.load(path_portfolio_class.open("rb"))
-        Account = pickle.load(path_account_class.open("rb"))
-    '''
-    acc_file = None
+    
     with open(path_to_account / "index.txt") as index_file:
         hist = index_file.read()
         hist_list = hist.split(".acc")
@@ -259,19 +256,22 @@ def load_account(account_name):
                     backup_file = path_to_account / backup_name
                     account = pickle.load(backup_file.open("rb"))
                     print(
-                        f"INFO: account backup {backup_name} loaded succesfuly."
+                        f"INFO: account backup {backup_name} loaded successfully."
                     )
                     return account
                 except Exception as identifier:
                     print(identifier)
                     print(f"WARNING: account backup {backup_name} not loaded.")
+    
+    return None
 
 
 def generate_orders(old_portfolio, new_portfolio, prices):
     '''
-        Generates a list of orders given two porfolios and the prices used to optimize
-        the new portfolio. Note that buy/sell prices for these orders might be (slightly)
-        different since the orders are placed manually after generating them.
+        Generates a list of orders given two portfolios and the prices used to
+        optimize the new portfolio. Note that buy/sell prices for these orders
+        might be (slightly) different since the orders are placed manually
+        after generating them.
     '''
     orders = []
     assets = set()
@@ -293,12 +293,12 @@ def generate_orders(old_portfolio, new_portfolio, prices):
 
 def build_account_history(portfolios, data_manager):
     '''
-        Build a time series of the total value of the porfolios that
+        Build a time series of the total value of the portfolios that
         an account has had since its opening until the last date in
         `prices_history`.
 
         Args:
-            portfolios (dict of string-Porfolio): portfolios of the account
+            portfolios (dict of string-Portfolio): portfolios of the account
             at different transaction dates.
             data_manager (DataManager): instance of a data manager to get
             prices from.
