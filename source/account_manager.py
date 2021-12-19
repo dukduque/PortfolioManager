@@ -10,10 +10,9 @@ import pandas as pd
 import numpy as np
 from collections import defaultdict
 from matplotlib import pyplot as plt
-from resources import Portfolio, Account, Order, load_account, \
-    generate_orders, save_account, OPERATION_BUY, OPERATION_SELL, \
-    build_account_history
-from opt_tools import cvar_model_pulp, cvar_model_ortools
+from resources import Portfolio, load_account, \
+    generate_orders, build_account_history
+from opt_tools import cvar_model_ortools
 
 
 def read_account(account_name):
