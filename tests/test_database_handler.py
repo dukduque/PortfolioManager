@@ -145,7 +145,4 @@ def test_create_database_from_scratch():
     assert path_to_test_data.exists()
 
 
-def test_get_sp500_tickers():
-    dh.set_data_path(Path(__file__).parent.parent / 'data/')
-    sp500 = get_sp500_tickers()
-    assert len(sp500) > 0
+#TODO: Mock sp500 tickers
