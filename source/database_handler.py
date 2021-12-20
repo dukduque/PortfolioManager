@@ -1,12 +1,10 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 Created on Thu May 23 22:32:31 2019
 
 @author: dduque
 
 This module implements function to manage the prices database and
-acces the information. As of 2019/06/03, the package to acces price
+access the information. As of 2019/06/03, the package to access price
 data is yfinance.
 """
 '''
@@ -43,11 +41,18 @@ EMPTY_METADATA = {
 
 
 def set_data_path(new_path_to_data):
+    path_is_new = False
     new_path = Path(new_path_to_data)
     if (not new_path.is_dir()):
-        raise f'{new_path} is no a valid path.'
+        try:
+            path_is_new = True
+            os.mkdir(str(new_path))
+        except Exception as e:
+            raise f'{new_path} is no a valid path. {str(e)}'
+    
     global path_to_data
     path_to_data = new_path.absolute()
+    return path_is_new
 
 
 class DataManager:
@@ -96,7 +101,7 @@ class DataManager:
         except Exception:
             self.metadata[asset] = EMPTY_METADATA
             self.metadata[asset]['name'] = asset
-        safe_metadata(self.metadata, self.metadata_file)
+        save_metadata(self.metadata, self.metadata_file)
         return self.metadata[asset]
     
     def get_returns(self, start_date, end_date, stocks=[], outlier_return=10):
@@ -239,6 +244,7 @@ def load_database(DB_file_name):
         return pd.read_pickle(path_to_database)
     except Exception as e:
         print(e)
+    return None
 
 
 def save_database(BD, DB_file_name):
@@ -255,10 +261,16 @@ def save_database(BD, DB_file_name):
         copy_name = 'copy_%s' % (DB_file_name)
         copy_path = os.path.join(path_to_data, copy_name)
         shutil.copyfile(path_to_database, copy_path)
-    BD.to_pickle(path_to_database)
+    
+    try:
+        BD.to_pickle(path_to_database)
+        return True
+    except Exception as e:
+        print(e)
+    return False
 
 
-def safe_metadata(metadata, metadata_file):
+def save_metadata(metadata, metadata_file):
     path_to_database = os.path.join(path_to_data, metadata_file)
     print(path_to_database)
     exists = os.path.isfile(path_to_database)
@@ -276,28 +288,27 @@ def create_database(stock_symbol, start=None, end=None):
     Args:
         stock_symbol (str): stock symbol to query
         start (str or datetime): start date of the query
-        end (str or datetime): end time of the query (if None, databes includes today's data)
+        end (str or datetime): end time of the query (if str, this is a
+                               exclusive interval)
     Return:
         db (DataFrame): a dataframe with the requested symbol
-        status (bool): true if the query was succesfull
+        status (bool): true if the query was successful
     '''
-    print(stock_symbol, start, end)
-    
     try:
-        stock = yf.Ticker(stock_symbol)
-        tomorow = datetime.datetime.today() + datetime.timedelta(days=1)
-        _end_date = end if end is not None else datetime.datetime.today()
         time.sleep(np.random.uniform(0, 0.1))
         db = yf.download(stock_symbol, start=start, end=end, threads=False)
-        db = db.Close
+        if len(db.index) == 0:
+            # No data found
+            return stock_symbol, None, False
         
+        db = db.Close
         db = db.loc[~db.index.duplicated(keep='last')]
-        db = db[db.index >= start]
+        if start is not None:
+            db = db[db.index >= start]
         db.rename(stock_symbol, inplace=True)
         return stock_symbol, db, True
     except Exception as e:
-        print(e)
-        print('Fail to get: ', stock_symbol, start, end)
+        print(f'Failed to get: {stock_symbol} , {start}, {end}')
     
     return stock_symbol, None, False
 
@@ -314,7 +325,8 @@ def add_stock(db, stock_symbol, start=None, end=None):
     '''
     _, ndb, status = create_database(stock_symbol, start, end)
     if status:
-        return pd.concat((db, ndb), axis=1, join='outer'), True
+        join_type = 'inner' if len(db.index) > 0 else 'outer'
+        return pd.concat((db, ndb), axis=1, join=join_type), True
     else:
         return db, False
 
@@ -337,7 +349,7 @@ def get_returns(data_file,
                 outlier_return=10):
     '''
     Computes the returns for stocks in the data file from
-    a given year. All prices should be avaialbe to consider
+    a given year. All prices should be available to consider
     a stock.
     Args:
         data_file (str): database file
@@ -426,21 +438,18 @@ def update_database_single_stock(db,
 
 
 def download_all_data(DB_file_name,
-                      sp500=True,
+                      tickers=[],
+                      sp500=False,
                       rusell1000=False,
-                      include_bonds=True,
+                      include_bonds=False,
                       n_proc=4):
-    # symbols_df = web.get_nasdaq_symbols()
-    # symbols_df = symbols_df[symbols_df.ETF == False]
-    # symbols_df = symbols_df[symbols_df.ETF == False]
-    # sym_list = list(symbols_df.index)
-    
-    sp500_stocks = save_sp500_tickers()
-    rusell1000_stocks = save_rusell1000_tickers()
     stocks = set()
+    stocks.update(tickers)
     if sp500:
+        sp500_stocks = save_sp500_tickers()
         stocks.update(sp500_stocks.keys())
     if rusell1000:
+        rusell1000_stocks = save_rusell1000_tickers()
         stocks.update(rusell1000_stocks)
     if include_bonds:
         # TODO: find a larger list of bonds and/or bonds ETFs
@@ -473,6 +482,6 @@ if __name__ == '__main__':
         out_file = 'close.pkl'  # % (str_today.split(' ')[0])
         run_update_process(args.db_file, out_file, args.n_proc, args.days_back)
     elif args.a == 'd':
-        download_all_data(args.db_file, n_proc=args.n_proc)
+        download_all_data(args.db_file, sp500=True, n_proc=args.n_proc)
     elif args.a == 'sp500':
         save_sp500_tickers()
