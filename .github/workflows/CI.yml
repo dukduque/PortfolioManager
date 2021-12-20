@@ -23,6 +23,7 @@ jobs:
       - name: Create environment file
         run: |
           touch .env
-          echo PYTHONPATH=${PYTHONPATH};home/runner/work/PortfolioManager/PortfolioManager/source >> .env
+          echo "${PYTHONPATH}"
+          echo PYTHONPATH="${PYTHONPATH};home/runner/work/PortfolioManager/PortfolioManager/source" >> .env
       - name: Run tests with pytest
         run: pytest 
