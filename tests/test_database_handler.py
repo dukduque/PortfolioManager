@@ -145,4 +145,4 @@ def test_create_database_from_scratch():
     assert path_to_test_data.exists()
 
 
-#TODO: Mock sp500 tickers
+# TODO: Mock sp500 tickers

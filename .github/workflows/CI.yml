@@ -26,4 +26,9 @@ jobs:
           echo "${PYTHONPATH}"
           echo PYTHONPATH="${PYTHONPATH};home/runner/work/PortfolioManager/PortfolioManager/source" >> .env
       - name: Run tests with pytest
-        run: pytest 
+        run: |
+          pytest
+          coverage run tests/
+          coverage xml
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v2
