@@ -32,4 +32,4 @@ jobs:
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v2
         with:
-          file: ./portfolio_cov.xml
+          files: ./portfolio_cov.xml,./coverage.xml
