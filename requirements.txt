@@ -1,5 +1,4 @@
 pandas_datareader==0.9.0
-PuLP==2.4
 requests==2.24.0
 numpy==1.19.2
 matplotlib==3.3.1

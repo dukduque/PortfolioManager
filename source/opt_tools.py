@@ -11,8 +11,6 @@ import numpy as np
 import pandas as pd
 from itertools import product
 from matplotlib import pyplot as plt
-from pulp import LpProblem, LpVariable, LpMaximize, LpContinuous, LpInteger, lpSum, COIN_CMD
-from pulp.apis.core import LpSolver_CMD
 from ortools.linear_solver import pywraplp
 
 
