@@ -89,20 +89,20 @@ Account class tests
 
 
 def test_new_account():
-    account = Account('holder', dt.datetime.now())
-    assert account.last_transaction <= dt.datetime.now()
+    account = Account('holder', dt.datetime(2021, 10, 31, 9, 30))
+    assert account.last_transaction <= dt.datetime(2021, 10, 31, 9, 30)
     assert len(account.portfolio.assets) == 0
 
 
 def test_account_deposit():
-    account = Account('holder', dt.datetime.now())
+    account = Account('holder', dt.datetime(2021, 10, 31, 9, 30))
     deposit_date = dt.datetime(2021, 12, 12, 10, 10)
     assert account.deposit(deposit_date, 1_000)
     assert account.cash_onhand == 1_000
 
 
 def test_account_withdraw():
-    account = Account('holder', dt.datetime.now())
+    account = Account('holder', dt.datetime(2021, 10, 31, 9, 30))
     deposit_date = dt.datetime(2021, 12, 12, 10, 10)
     account.deposit(deposit_date, 1_000)
     withdraw_date = dt.datetime(2021, 12, 12, 10, 14)
@@ -115,10 +115,10 @@ def test_account_withdraw():
 
 
 def test_account_update():
-    account = Account('holder', dt.datetime.now())
-    account.deposit(dt.datetime(2021, 12, 12, 10, 10), 1_000)
+    account = Account('holder', dt.datetime(2021, 10, 31, 9, 30))
+    account.deposit(dt.datetime(2021, 12, 13, 10, 10), 1_000)
     
-    update_status = account.update_account(dt.datetime(2021, 12, 20, 9, 35),
+    update_status = account.update_account(dt.datetime(2021, 12, 17, 9, 35),
                                            orders=[
                                                Order('ABC', 100, 1.2,
                                                      OPERATION_BUY),
@@ -133,16 +133,16 @@ def test_account_update():
 
 
 def test_account_update_sell():
-    account = Account('holder', dt.datetime.now())
+    account = Account('holder', dt.datetime(2021, 10, 31, 9, 30))
     account.deposit(dt.datetime(2021, 12, 12, 10, 10), 1_000)
-    account.update_account(dt.datetime(2021, 12, 20, 9, 30),
+    account.update_account(dt.datetime(2021, 12, 13, 9, 30),
                            orders=[
                                Order('ABC', 100, 1.2, OPERATION_BUY),
                                Order('XYZ', 1000, 0.2, OPERATION_BUY)
                            ])
     initial_cash_onhand = account.cash_onhand
     
-    update_status = account.update_account(dt.datetime(2021, 12, 21, 9, 30),
+    update_status = account.update_account(dt.datetime(2021, 12, 17, 9, 30),
                                            orders=[
                                                Order('ABC', 10, 2.2,
                                                      OPERATION_BUY),
@@ -156,13 +156,13 @@ def test_account_update_sell():
 
 
 def test_account_update_sells_missing_asset():
-    account = Account('holder', dt.datetime.now())
+    account = Account('holder', dt.datetime(2021, 10, 31, 9, 30))
     account.deposit(dt.datetime(2021, 12, 12, 10, 10), 1_000)
-    account.update_account(dt.datetime(2021, 12, 20, 9, 30),
+    account.update_account(dt.datetime(2021, 12, 13, 9, 30),
                            orders=[Order('ABC', 100, 1.2, OPERATION_BUY)])
     initial_cash_onhand = account.cash_onhand
     
-    update_status = account.update_account(dt.datetime(2021, 12, 21, 9, 30),
+    update_status = account.update_account(dt.datetime(2021, 12, 17, 9, 30),
                                            orders=[
                                                Order('ABC', 10, 2.2,
                                                      OPERATION_BUY),
