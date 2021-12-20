@@ -22,5 +22,5 @@ jobs:
           pip install -r requirements.txt
       - name: Run tests with pytest
         run: |
-            echo "/home/runner/work/PortfolioManager/PortfolioManager/source" >> $PYTHONPATH
+            echo "::set-env name=PYTHONPATH::home/runner/work/PortfolioManager/PortfolioManager/source
             pytest 
