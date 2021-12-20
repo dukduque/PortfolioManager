@@ -1,7 +1,10 @@
-from resources import OPERATION_BUY, OPERATION_SELL, Portfolio, Order,\
-    Account, create_new_account, load_account, set_account_path
+from tests import import_source_modules
+import_source_modules()
+
 import datetime as dt
 from pathlib import Path
+from resources import OPERATION_BUY, OPERATION_SELL, Portfolio, Order,\
+    Account, create_new_account, load_account, set_account_path
 '''
 =============================================
 Portfolio class tests

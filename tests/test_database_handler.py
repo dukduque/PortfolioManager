@@ -1,8 +1,10 @@
 import os
+from tests import import_source_modules
+import_source_modules()
+
 import datetime as dt
 import pandas as pd
 from pathlib import Path
-
 from pandas.core.frame import DataFrame
 from source import database_handler as dh
 from source.database_handler import DataManager, download_all_data, \
