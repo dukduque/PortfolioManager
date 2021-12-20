@@ -4,6 +4,9 @@
 
 # Portfolio Manager
 
+[codecov-img]: https://codecov.io/github/dukduque/PortfolioManager/coverage.svg?branch=master
+[codecov-url]: https://codecov.io/github/dukduque/PortfolioManager?branch=master
+
 This repo contains code to download financial data using [ranaroussi/yfiance](https://github.com/ranaroussi/yfinance) and build a portfolio using mathematical optimization.
 
 ## Setup
