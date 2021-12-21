@@ -2,9 +2,11 @@ from tests import import_source_modules
 import_source_modules()
 
 import datetime as dt
+import pandas as pd
 from pathlib import Path
 from resources import OPERATION_BUY, OPERATION_SELL, Portfolio, Order,\
-    Account, create_new_account, load_account, set_account_path
+    Account, build_account_history, create_new_account, \
+    generate_orders, load_account, set_account_path
 '''
 =============================================
 Portfolio class tests
@@ -65,6 +67,49 @@ def test_create_from_transactions():
     assert new_portfolio is None
 
 
+def test_get_postion():
+    initial_portfolio = Portfolio.create_from_vectors(['A', 'B'], [1, 2])
+    assert initial_portfolio.get_position('A') == 1
+    assert initial_portfolio.get_position('B') == 2
+    assert initial_portfolio.get_position('C') == 0
+
+
+def test_fractional_postions():
+    initial_portfolio = Portfolio.create_from_vectors(['A', 'B'], [1, 2.5])
+    assert not initial_portfolio.position_is_fractional('A')
+    assert initial_portfolio.position_is_fractional('B')
+    assert not initial_portfolio.position_is_fractional('C')
+    print(initial_portfolio)
+
+
+def test_add_portfolios():
+    portfolio_a = Portfolio.create_from_vectors(['A', 'B'], [1, 2.5])
+    portfolio_b = Portfolio.create_from_vectors(['A', 'C'], [1, 3])
+    portfolio_c = Portfolio.create_from_vectors(['C'], [10])
+    final_portfolio = (portfolio_a + portfolio_b) + portfolio_c
+    assert final_portfolio.get_position('A') == 2
+    assert final_portfolio.get_position('B') == 2.5
+    assert final_portfolio.get_position('C') == 13
+
+
+def test_add_none_portfolios():
+    portfolio_a = Portfolio.create_from_vectors(['A', 'B'], [0, 2.5])
+    assert portfolio_a + None is None
+
+
+def test_add_invalid_portfolios():
+    portfolio_a = Portfolio.create_from_vectors(['A', 'B'], [0, 2.5])
+    portfolio_a._data['A']['qty'] = -1
+    portfolio_b = Portfolio.create_from_vectors(['A', 'B'], [1, 2.5])
+    assert portfolio_a + portfolio_b is None
+
+
+def test_str_repr():
+    portfolio_a = Portfolio.create_from_vectors(['A', 'B'], [0, 2.5])
+    assert str(portfolio_a) == f'{"A":8s}{0}\n{"B":8s}{2.5}\n'
+    assert portfolio_a.__str__() == portfolio_a.__repr__()
+
+
 '''
 =============================================
 Order class tests
@@ -79,6 +124,7 @@ def test_order_str():
     assert f"{order}" == "Buy A : 1 : 1.0001"
     order = Order('A', 1, 1.00005, OPERATION_BUY)
     assert f"{order}" == "Buy A : 1 : 1.0001"
+    assert order.__str__() == order.__repr__()
 
 
 '''
@@ -175,6 +221,33 @@ def test_account_update_sells_missing_asset():
     assert account.portfolio.get_position('XYZ') == 0
 
 
+def test_account_operations_history():
+    set_account_path(Path(__file__).parent / 'test_data/')
+    account = create_new_account('holder_a', dt.datetime(2021, 12, 12))
+    account.update_account(dt.datetime(2021, 12, 13, 9, 30),
+                           orders=[Order('ABC', 1, 123, OPERATION_BUY)])
+    account.update_account(dt.datetime(2021, 12, 15, 9, 30),
+                           orders=[
+                               Order('ABC', 0.5, 123, OPERATION_SELL),
+                               Order('XYZ', 2, 456, OPERATION_BUY),
+                           ])
+    account.update_account(dt.datetime(2021, 12, 16, 9, 30),
+                           orders=[Order('XYZ', 1, 450, OPERATION_SELL)])
+    
+    history = account.operations_history()
+    assert len(history) == 4
+    assert history[0][1] == 123
+    assert history[1][1] == 2 * 456
+    assert history[2][1] == -0.5 * 123
+    assert history[3][1] == -450
+    
+    account = load_account('holder_a')
+    assert account.holder == 'holder_a'
+    
+    account = load_account('holder_b')
+    assert account is None
+
+
 def test_load_account():
     set_account_path(Path(__file__).parent / 'test_data/')
     create_new_account('holder_a', dt.datetime.now)
@@ -184,3 +257,84 @@ def test_load_account():
     
     account = load_account('holder_b')
     assert account is None
+
+
+def test_generate_orders():
+    old_portfolio = Portfolio.create_from_vectors(['A', 'B', 'D'], [1, 2, 4])
+    new_portfolio = Portfolio.create_from_vectors(['A', 'C', 'D'], [10, 2, 4])
+    
+    orders = generate_orders(old_portfolio,
+                             new_portfolio,
+                             prices={
+                                 "A": 10.3,
+                                 "B": 31.4,
+                                 "C": 0.341,
+                                 "D": 1.7
+                             })
+    assert len(orders) == 3
+    
+    assert orders[0].ticker == "A"
+    assert orders[0].qty == 9
+    assert orders[0].price == 10.3
+    assert orders[0].operation_type == OPERATION_BUY
+    
+    assert orders[1].ticker == "B"
+    assert orders[1].qty == 2
+    assert orders[1].price == 31.4
+    assert orders[1].operation_type == OPERATION_SELL
+    
+    assert orders[2].ticker == "C"
+    assert orders[2].qty == 2
+    assert orders[2].price == 0.341
+    assert orders[2].operation_type == OPERATION_BUY
+
+
+def test_generate_orders_missing_prices():
+    old_portfolio = Portfolio.create_from_vectors(['A', 'B', 'D'], [1, 2, 4])
+    new_portfolio = Portfolio.create_from_vectors(['A', 'C', 'D'], [10, 2, 3])
+    
+    orders = generate_orders(old_portfolio,
+                             new_portfolio,
+                             prices={
+                                 "A": 10.3,
+                                 "B": 31.4,
+                                 "C": 0.341
+                             })
+    # Asset D is missing from the price dictionary
+    assert orders is None
+
+
+def test_build_history():
+    class DataManagerMock:
+        def get_prices(_, assets):
+            df = pd.DataFrame(data={
+                'A': [1, 1, 1, 10, 11],
+                'B': [3, 4, 5, 2, 3],
+                'C': [100, 100, 110, 100, 100],
+            },
+                              index=[
+                                  dt.datetime(2021, 12, 13),
+                                  dt.datetime(2021, 12, 14),
+                                  dt.datetime(2021, 12, 15),
+                                  dt.datetime(2021, 12, 16),
+                                  dt.datetime(2021, 12, 17),
+                              ])
+            return df[assets]
+    
+    data_mocker = DataManagerMock()
+    portfolios = {
+        dt.datetime(2021, 12, 13):
+        Portfolio.create_from_vectors(['A'], [10]),
+        dt.datetime(2021, 12, 15):
+        Portfolio.create_from_vectors(['A', 'C'], [10, 1]),
+    }
+    history_dates, account_history = build_account_history(
+        portfolios, data_mocker)
+    
+    assert history_dates[0].day == 13
+    assert history_dates[1].day == 14
+    assert history_dates[2].day == 15
+    assert history_dates[3].day == 15
+    assert history_dates[4].day == 16
+    
+    assert account_history == [10, 10, 10, 10 + 110, 100 + 100, 110 + 100]

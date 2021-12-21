@@ -89,14 +89,6 @@ def test_create_database_with_start_date():
     assert goog_data.index[-1].date() <= dt.datetime.now().date()
 
 
-def test_create_database_with_start_date2():
-    _, goog_data, success = dh.create_database('GOOG', '2020-01-02',
-                                               '2020-01-03')
-    assert success
-    assert isinstance(goog_data, pd.Series)
-    assert len(goog_data) == 1
-
-
 def test_create_database_invalid_symbol():
     _, goog_data, success = dh.create_database('NOTASYMBOL')
     

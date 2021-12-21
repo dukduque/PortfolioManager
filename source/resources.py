@@ -1,5 +1,6 @@
 """
-This module contains various data structurs for data manipulation, optimization, and backtesting
+This module contains various data structures for data manipulation,
+optimization, and backtesting
 """
 import datetime as dt
 import pandas as pd
@@ -42,6 +43,8 @@ class Portfolio:
     def create_from_vectors(cls, assets, qty):
         p = cls()
         for (a, q) in zip(assets, qty):
+            if q < 0:
+                return None
             p._data[a] = {"qty": q}
         return p
     
@@ -79,9 +82,15 @@ class Portfolio:
         return self.__str__()
     
     def __add__(self, other_portfolio):
+        if other_portfolio is None:
+            return None
         all_assets = list(set(list(self.assets) + list(other_portfolio.assets)))
         qtys = []
         for a in all_assets:
+            if self.get_position(a) < 0:
+                return None
+            if other_portfolio.get_position(a) < 0:
+                return None
             q = self.get_position(a) + other_portfolio.get_position(a)
             qtys.append(q)
         return Portfolio.create_from_vectors(all_assets, qtys)
@@ -278,6 +287,8 @@ def generate_orders(old_portfolio, new_portfolio, prices):
     assets.update(old_portfolio.assets)
     assets.update(new_portfolio.assets)
     for asset in assets:
+        if asset not in prices:
+            return None
         old_position = old_portfolio.get_position(asset)
         new_position = new_portfolio.get_position(asset)
         if old_position < new_position:  # Buy
@@ -288,6 +299,7 @@ def generate_orders(old_portfolio, new_portfolio, prices):
             orders.append(
                 Order(asset, old_position - new_position, prices[asset],
                       OPERATION_SELL))
+    orders.sort(key=lambda x: x.ticker)
     return orders
 
 
