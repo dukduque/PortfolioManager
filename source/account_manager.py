@@ -40,10 +40,13 @@ def benchmark(account_name, benchmark_symbol='SPY'):
                                    month=op_date.month,
                                    day=op_date.day)
         date_ix = np.where(SPY_prices.index == pandas_date)[0][0]
-        price_on_date = SPY_prices.iloc[date_ix]
-        portfolio_on_date = Portfolio.create_from_vectors(
-            assets=[benchmark_symbol], qty=[op_value / price_on_date])
-        sp500_portfolios[op_date] = portfolio_on_date + ini_portfolio
+        price_on_date = SPY_prices.iloc[date_ix][0]
+        qty_delta = op_value / price_on_date
+        current_qty = ini_portfolio.get_position(benchmark_symbol)
+        portfolio_on_date = Portfolio.create_empty()
+        portfolio_on_date.modify_position(benchmark_symbol,
+                                          current_qty + qty_delta)
+        sp500_portfolios[op_date] = portfolio_on_date
         ini_portfolio = sp500_portfolios[op_date]
         net_transactions[pandas_date] = balance
     

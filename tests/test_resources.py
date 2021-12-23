@@ -28,6 +28,11 @@ def test_create_from_vectors():
     assert portfolio.assets == set(['A', 'B'])
 
 
+def test_create_from_vectors_is_none_for_negative_qty():
+    portfolio = Portfolio.create_from_vectors(['A', 'B'], [1, -2])
+    assert portfolio is None
+
+
 def test_create_from_transactions():
     initial_portfolio = Portfolio.create_from_vectors(['A', 'B'], [1, 2])
     transactions = [
@@ -80,6 +85,15 @@ def test_fractional_postions():
     assert initial_portfolio.position_is_fractional('B')
     assert not initial_portfolio.position_is_fractional('C')
     print(initial_portfolio)
+
+
+def test_modify_position():
+    initial_portfolio = Portfolio.create_from_vectors(['A', 'B'], [1, 2.5])
+    initial_portfolio.modify_position('A', 12)
+    initial_portfolio.modify_position('C', 1)
+    assert initial_portfolio.get_position('A') == 12
+    assert initial_portfolio.get_position('B') == 2.5
+    assert initial_portfolio.get_position('C') == 1
 
 
 def test_add_portfolios():

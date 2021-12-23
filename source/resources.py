@@ -72,6 +72,16 @@ class Portfolio:
         p = cls()
         return p
     
+    def modify_position(self, asset, qty):
+        '''
+        Replaces de position of the `asset` by `qty`
+        if `qty` >= 0.
+        '''
+        if qty < 0:
+            return False
+        self._data[asset] = {'qty': qty}
+        return True
+    
     def __str__(self):
         p_string = ''
         for a in self._data:
@@ -89,9 +99,9 @@ class Portfolio:
         for a in all_assets:
             if self.get_position(a) < 0:
                 return None
-            if other_portfolio.get_position(a) < 0:
-                return None
             q = self.get_position(a) + other_portfolio.get_position(a)
+            if q < 0:
+                return None
             qtys.append(q)
         return Portfolio.create_from_vectors(all_assets, qtys)
 
