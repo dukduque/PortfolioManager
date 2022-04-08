@@ -108,7 +108,11 @@ class Portfolio:
 
 OPERATION_SELL = 'Sell'
 OPERATION_BUY = 'Buy'
-OPERATION_TYPES = [OPERATION_SELL, OPERATION_BUY]
+OPERATION_SPLIT = 'Split'
+OPERATION_REVERSE_SPLIT = 'ReverseSplit'
+OPERATION_TYPES = [
+    OPERATION_SELL, OPERATION_BUY, OPERATION_SPLIT, OPERATION_REVERSE_SPLIT
+]
 
 
 class Order:
@@ -211,9 +215,38 @@ class Account:
                                                 ])['value'].agg('sum')
         for ix, value in zip(operations.index, operations):
             op_datetime, op_type = ix
-            signed_value = value if op_type == OPERATION_BUY else -value
+            signed_value = 0
+            if op_type == OPERATION_BUY:
+                signed_value = value
+            if op_type == OPERATION_SELL:
+                signed_value = -value
             history.append((op_datetime, signed_value))
         return history
+    
+    def split(self, asset, ratio, new_qty, new_price, split_date):
+        assert self.last_transaction <= split_date
+        new_qty_with_split = 0
+        for portfolio in self.portfolios.values():
+            current_qty = portfolio.get_position(asset)
+            if current_qty > 0:
+                portfolio_new_qty = current_qty * ratio
+                new_qty_with_split += portfolio_new_qty
+                portfolio.modify_position(asset, portfolio_new_qty)
+        qty_delta = new_qty_with_split - new_qty
+        self.cash_onhand += qty_delta * new_price
+        operation_type = OPERATION_SPLIT if ratio > 1 else OPERATION_REVERSE_SPLIT
+        self.transactions = self.transactions.append(
+            {
+                "ticker": asset,
+                "datetime": split_date,
+                "operation": operation_type,
+                "qty": new_qty_with_split,
+                "price": new_price,
+            },
+            ignore_index=True)
+        self.portfolios[split_date] = copy.deepcopy(self.portfolio)
+        self.last_transaction = split_date
+        self.portfolio.modify_position(asset, new_qty)
     
     def __str__(self):
         s = f"Holder: {self.holder} - cash onhand: {self.cash_onhand:.2f}\n"
