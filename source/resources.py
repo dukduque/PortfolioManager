@@ -3,13 +3,11 @@ This module contains various data structures for data manipulation,
 optimization, and backtesting
 """
 import datetime as dt
-from re import A
 import pandas as pd
 import numpy as np
 import copy
 import pickle
 import math
-import types
 from pathlib import Path
 from collections import defaultdict
 
