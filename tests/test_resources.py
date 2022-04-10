@@ -3,10 +3,11 @@ import_source_modules()
 
 import datetime as dt
 import pandas as pd
+import numpy as np
 from pathlib import Path
-from resources import OPERATION_BUY, OPERATION_SELL, Portfolio, Order,\
-    Account, build_account_history, create_new_account, \
-    generate_orders, load_account, set_account_path
+from resources import OPERATION_BUY, OPERATION_SELL, OPERATION_REVERSE_SPLIT,\
+    OPERATION_SPLIT, Portfolio, Order, Account, build_account_history,\
+    create_new_account, generate_orders, load_account, set_account_path
 '''
 =============================================
 Portfolio class tests
@@ -352,3 +353,96 @@ def test_build_history():
     assert history_dates[4].day == 16
     
     assert account_history == [10, 10, 10, 10 + 110, 100 + 100, 110 + 100]
+
+
+def test_split():
+    account = Account('holder', dt.datetime(2021, 11, 10, 9, 30))
+    account.deposit(dt.datetime(2021, 11, 11, 10, 10), 1_000)
+    account.update_account(dt.datetime(2021, 11, 12, 9, 30),
+                           orders=[
+                               Order('ABC', 100, 0.2, OPERATION_BUY),
+                               Order('XYZ', 1000, 0.2, OPERATION_BUY)
+                           ])
+    account.update_account(dt.datetime(2021, 11, 13, 9, 30),
+                           orders=[
+                               Order('ABC', 10, 1.2, OPERATION_BUY),
+                           ])
+    initial_cash_onhand = account.cash_onhand
+    
+    account.split('ABC', 2, 220, 0.6, dt.datetime(2021, 11, 14, 9, 30))
+    
+    portfolio_1 = account.portfolios[dt.datetime(2021, 11, 12, 9, 30)]
+    assert portfolio_1.get_position('ABC') == 200
+    assert portfolio_1.get_position('XYZ') == 1000
+    portfolio_2 = account.portfolios[dt.datetime(2021, 11, 13, 9, 30)]
+    assert portfolio_2.get_position('ABC') == 220
+    assert portfolio_2.get_position('XYZ') == 1000
+    portfolio_3 = account.portfolios[dt.datetime(2021, 11, 14, 9, 30)]
+    assert portfolio_3.get_position('ABC') == 220
+    assert portfolio_3.get_position('XYZ') == 1000
+    assert account.transactions.iloc[-1]['operation'] == OPERATION_SPLIT
+    assert account.cash_onhand == initial_cash_onhand
+
+
+def test_reverse_split():
+    account = Account('holder', dt.datetime(2021, 11, 10, 9, 30))
+    account.deposit(dt.datetime(2021, 11, 11, 10, 10), 1_000)
+    account.update_account(dt.datetime(2021, 11, 12, 9, 30),
+                           orders=[
+                               Order('ABC', 100, 0.2, OPERATION_BUY),
+                               Order('XYZ', 1000, 0.2, OPERATION_BUY)
+                           ])
+    account.update_account(dt.datetime(2021, 11, 13, 9, 30),
+                           orders=[
+                               Order('ABC', 10, 1.2, OPERATION_BUY),
+                           ])
+    initial_cash_onhand = account.cash_onhand
+    
+    account.split('ABC', 1 / 3, 36, 3.6, dt.datetime(2021, 11, 14, 9, 30))
+    
+    portfolio_1 = account.portfolios[dt.datetime(2021, 11, 12, 9, 30)]
+    assert np.abs(portfolio_1.get_position('ABC') - 100 / 3) < 1e-6
+    assert portfolio_1.get_position('XYZ') == 1000
+    portfolio_2 = account.portfolios[dt.datetime(2021, 11, 13, 9, 30)]
+    assert np.abs(portfolio_2.get_position('ABC') - 110 / 3) < 1e-6
+    assert portfolio_2.get_position('XYZ') == 1000
+    portfolio_3 = account.portfolios[dt.datetime(2021, 11, 14, 9, 30)]
+    assert portfolio_3.get_position('ABC') == 36
+    assert portfolio_3.get_position('XYZ') == 1000
+    assert account.transactions.iloc[-1]['operation'] == OPERATION_REVERSE_SPLIT
+    assert np.abs(account.cash_onhand - (initial_cash_onhand +
+                                         (110 / 3 - 36) * 3.6)) < 1e-6
+
+
+def test_double_split():
+    account = Account('holder', dt.datetime(2021, 11, 10, 9, 30))
+    account.deposit(dt.datetime(2021, 11, 11, 10, 10), 1_000)
+    account.update_account(dt.datetime(2021, 11, 12, 9, 30),
+                           orders=[
+                               Order('ABC', 100, 0.2, OPERATION_BUY),
+                               Order('XYZ', 1000, 0.2, OPERATION_BUY)
+                           ])
+    account.update_account(dt.datetime(2021, 11, 13, 9, 30),
+                           orders=[
+                               Order('ABC', 10, 1.2, OPERATION_BUY),
+                           ])
+    initial_cash_onhand = account.cash_onhand
+    
+    account.split('ABC', 2, 220, 0.6, dt.datetime(2021, 11, 14, 9, 30))
+    account.split('ABC', 3, 660, 0.2, dt.datetime(2021, 11, 15, 9, 30))
+    
+    portfolio_1 = account.portfolios[dt.datetime(2021, 11, 12, 9, 30)]
+    assert np.abs(portfolio_1.get_position('ABC') - 600) < 1e-6
+    assert portfolio_1.get_position('XYZ') == 1000
+    portfolio_2 = account.portfolios[dt.datetime(2021, 11, 13, 9, 30)]
+    assert np.abs(portfolio_2.get_position('ABC') - 660) < 1e-6
+    assert portfolio_2.get_position('XYZ') == 1000
+    portfolio_3 = account.portfolios[dt.datetime(2021, 11, 14, 9, 30)]
+    assert portfolio_3.get_position('ABC') == 660
+    assert portfolio_3.get_position('XYZ') == 1000
+    portfolio_4 = account.portfolios[dt.datetime(2021, 11, 15, 9, 30)]
+    assert portfolio_4.get_position('ABC') == 660
+    assert portfolio_4.get_position('XYZ') == 1000
+    assert account.transactions.iloc[-1]['operation'] == OPERATION_SPLIT
+    assert account.transactions.iloc[-1]['operation'] == OPERATION_SPLIT
+    assert np.abs(account.cash_onhand - initial_cash_onhand) < 1e-6

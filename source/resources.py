@@ -3,6 +3,7 @@ This module contains various data structures for data manipulation,
 optimization, and backtesting
 """
 import datetime as dt
+from re import A
 import pandas as pd
 import numpy as np
 import copy
@@ -225,13 +226,12 @@ class Account:
     
     def split(self, asset, ratio, new_qty, new_price, split_date):
         assert self.last_transaction <= split_date
-        new_qty_with_split = 0
+        assert ratio > 0, "Split ratio is a positive quantity."
+        new_qty_with_split = self.portfolio.get_position(asset) * ratio
         for portfolio in self.portfolios.values():
             current_qty = portfolio.get_position(asset)
-            if current_qty > 0:
-                portfolio_new_qty = current_qty * ratio
-                new_qty_with_split += portfolio_new_qty
-                portfolio.modify_position(asset, portfolio_new_qty)
+            portfolio_new_qty = current_qty * ratio
+            portfolio.modify_position(asset, portfolio_new_qty)
         qty_delta = new_qty_with_split - new_qty
         self.cash_onhand += qty_delta * new_price
         operation_type = OPERATION_SPLIT if ratio > 1 else OPERATION_REVERSE_SPLIT
