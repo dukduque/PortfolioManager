@@ -8,6 +8,7 @@ access the information. As of 2019/06/03, the package to access price
 data is yfinance.
 """
 
+import enum
 import shutil
 import yfinance as yf
 import requests
@@ -190,14 +191,20 @@ def save_sp500_tickers():
 def get_market_cap(ticker_str):
     """
     Retrieves the market cap of the ticker given as input. If the ticker information is not available, returns zero.
+    
+    Note: We add a random sleep to avoid overloading the Yahoo Finance API.
     """
     ticker = yf.Ticker(ticker_str)
     print(f"Getting {ticker_str} market cap...")
     try:
+        # Add a random sleep to avoid overloading the Yahoo Finance API
         time.sleep(np.random.uniform(0, 500) / 1000)
+        # Return the ticker and its market capitalization
         return (ticker_str, ticker.info["marketCap"])
     except Exception as e:
+        # If there is an error (e.g. the ticker is not recognized), print the error message
         print(e)
+        # Return the ticker and a market capitalization of 0.0
         return (ticker_str, 0.0)
 
 
@@ -309,9 +316,10 @@ def create_database(stock_symbol, start=None, end=None):
         db = db.loc[~db.index.duplicated(keep="last")]
         if start is not None:
             db = db[db.index >= start]
-        db.rename(stock_symbol, inplace=True)
+        # db.rename(stock_symbol, inplace=True)
         return stock_symbol, db, True
     except Exception as e:
+        print(e)
         print(f"Failed to get: {stock_symbol} , {start}, {end}")
 
     return stock_symbol, None, False
@@ -383,52 +391,65 @@ def get_returns(
     return db, db_r
 
 
-def update_database(db, n_proc, days_back):
+class StockUpdateStatus(enum.Enum):
+    OK = 0
+    NOT_FOUND = 1
+    FAILED = 2
+
+
+def update_stock_prices(stock_series, retries=3, backoff_seconds=1.0):
+    ticker_name = stock_series.name
+    stock_nan = stock_series.isna()
+    start_date = stock_series[~stock_nan].index.max() + dt.timedelta(days=1)
+    end_date = stock_series.index.max()
+    if start_date > end_date:
+        return StockUpdateStatus.OK
+    for i in range(retries):
+        try:
+            new_data = yf.download(stock_series.name, start=start_date,
+                                   end=end_date, threads=False,
+                                   multi_level_index=False).Close
+            if len(new_data.index) == 0:
+                return StockUpdateStatus.NOT_FOUND
+            new_data = new_data.rename(ticker_name, inplace=True)
+            stock_series.update(new_data)
+            return StockUpdateStatus.OK
+        except Exception as e:
+            print(f"Failed to get: {stock_series.name} in retry {i} with {e}")
+        sleep_time = (i + backoff_seconds) * 2 + np.random.uniform(0, 0.1)
+        time.sleep(sleep_time)
+    return StockUpdateStatus.FAILED
+
+def update_database(db, n_proc, unlisted_days_threshold=100):
     """
     Updates a database from the last prices.
     If n_proc > 1, runs a mutiprocess version of
     the function to speedup the colection of data.
     """
-    ts = db.index[
-        -days_back
-    ]  # get last date in DB  #TODO: what if last date was NaN
-    ndb = pd.DataFrame()
-    failed_stocks = []
-    print("Updating %i stock with %i processors" % (len(db.columns), n_proc))
-    if n_proc > 1:
-        data_pool = mp.Pool(n_proc)
-        stock_list = db.columns.to_list()
-        n = 100
-        chunks = [
-            stock_list[i * n : (i + 1) * n]
-            for i in range((len(stock_list) + n - 1) // n)
-        ]
-        for chunk in chunks:
-            stock_tasks = itertools.product(chunk, [ts])
-            mp_out = data_pool.map(create_database_mp, stock_tasks)
-            for s, db_s, status_s in mp_out:
-                if status_s:
-                    ndb = pd.concat((ndb, db_s), axis=1, join="outer")
-                else:
-                    failed_stocks.append(s)
-
-        data_pool.close()
-    else:
-        for c in db.columns:
-            try:
-                ndb, status = add_stock(ndb, c, start=ts)
-                if not status:  # No updated was performed
-                    failed_stocks.append(c)
-            except Exception as e:
-                print(e)
-    print(failed_stocks)
-    # Create new rows with NaN values
-    for new_date in ndb.index:
-        print(f"Crete row for {new_date}")
-        if new_date not in db.index:
-            db.loc[new_date] = [np.nan] * len(db.columns)
-    # Update NaN values
-    db.update(ndb, overwrite=False)
+    end_date = max(db.index.max(), dt.datetime.today())
+    new_date_range = pd.date_range(start=db.index.max(),
+                                   end=end_date, freq="D")
+    db = db.reindex(db.index.union(
+        new_date_range[np.array([x.weekday() < 5 for x in new_date_range])]))
+    failed_updates = []
+    # Sort the columns by the number of missing valuesa and fix the ones
+    # with the most number of missing values.
+    sorted_columns = db.isna().sum(axis=0).sort_values(ascending=False).index
+    columns_to_drop = []
+    for c in sorted_columns:
+        download_status = update_stock_prices(db[c])
+        if download_status == StockUpdateStatus.NOT_FOUND:
+            columns_to_drop.append(c)
+        elif download_status == StockUpdateStatus.FAILED:
+            failed_updates.append(c)
+    print("Failed to update %i stocks" % len(failed_updates))
+    # Drop rows where all values are missing (e.g., weekends)
+    db = db[db.isna().sum(axis=1) < len(db.columns)]
+    # Drop columns with all missing values (e.g., delisted stocks)
+    db = db.drop(columns_to_drop, axis=1)
+    # Drop columns where the last `days_back` values are missing
+    db = db.loc[:, ~db.isna().iloc[-unlisted_days_threshold:].all()]
+    # TODO: Fix parallel version
     return db
 
 
@@ -480,7 +501,9 @@ def run_update_process(
     db_file_in="close.pkl", db_file_out="close.pkl", n_proc=4, days_back=1
 ):
     db = load_database(db_file_in)
+    print(f"Loading db with {len(db.columns)} stocks")
     db = update_database(db, n_proc, days_back)
+    print(f"Updating db with {len(db.columns)} stocks")
     save_database(db, db_file_out)
 
 
