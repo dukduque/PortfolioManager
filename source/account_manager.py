@@ -2,7 +2,7 @@
 Various scripts to view and manage an account.
 """
 
-import sys
+import math
 import database_handler as dbh
 
 import datetime as dt
@@ -22,6 +22,110 @@ from opt_tools import cvar_model_ortools, default_cvar_parameters
 
 def read_account(account_name):
     account = load_account(account_name)
+
+
+def benchmark2(account_name, benchmark_symbol="SPY"):
+    account = load_account(account_name)
+    portfolios = account.portfolios
+    portfolio_dates = sorted(portfolios.keys())
+
+    data_manager = DataManager(db_file="close.pkl")
+    SPY_prices = data_manager.get_prices(benchmark_symbol)
+
+    benchmark_quantity = 0
+    account_history, history_dates, benchmark_history = [], [], []
+
+    last_valid_price = defaultdict(float)
+    last_portfolio_value = 0
+
+    for date_ix, portfolio_date in enumerate(portfolio_dates):
+        current_portfolio = portfolios[portfolio_date]
+        if not current_portfolio.assets:
+            continue
+
+        assets_data = data_manager.get_prices(current_portfolio.assets)
+        pd_date = pd.Timestamp(year=portfolio_date.year,
+                               month=portfolio_date.month,
+                               day=portfolio_date.day)
+
+        for asset in assets_data.columns:
+            price = assets_data[asset].loc[pd_date]
+            if not math.isnan(price):
+                last_valid_price[asset] = price
+
+        benchmark_price_on_date = SPY_prices.loc[pd_date]
+        if not math.isnan(benchmark_price_on_date):
+            last_valid_price[benchmark_symbol] = benchmark_price_on_date
+
+        portfolio_value = sum(
+            current_portfolio.get_position(asset) * last_valid_price[asset]
+            for asset in current_portfolio.assets
+        )
+
+        benchmark_quantity += (portfolio_value - last_portfolio_value) / \
+                              last_valid_price[benchmark_symbol]
+        last_portfolio_value = portfolio_value
+
+        start_date = dt.datetime(portfolio_date.year,
+                                 portfolio_date.month,
+                                 portfolio_date.day)
+        end_date = portfolio_dates[date_ix + 1] if date_ix + 1 < len(
+            portfolio_dates) else dt.datetime.today()
+        end_date = dt.datetime(end_date.year, end_date.month, end_date.day)
+
+        assets_data = assets_data[(assets_data.index >= start_date) &
+                                  (assets_data.index <= end_date)]
+
+        for d in assets_data.index:
+            total_assets_d = 0
+            prices_d = assets_data.loc[d]
+            for asset in prices_d.index:
+                asset_price_at_d = prices_d.loc[asset]
+                if not math.isnan(asset_price_at_d):
+                    last_valid_price[asset] = asset_price_at_d
+                total_assets_d += last_valid_price[asset] * \
+                                  current_portfolio.get_position(asset)
+
+            account_history.append(total_assets_d)
+
+            benchmark_price_on_date = SPY_prices.loc[d]
+            if not math.isnan(benchmark_price_on_date):
+                last_valid_price[benchmark_symbol] = benchmark_price_on_date
+
+            benchmark_history.append(last_valid_price[benchmark_symbol] *
+                                     benchmark_quantity)
+            history_dates.append(d)
+
+    net_transactions = {}
+    balance = 0
+    for op_date, op_value in account.operations_history():
+        balance += op_value
+        pandas_date = pd.Timestamp(year=op_date.year, month=op_date.month,
+                                   day=op_date.day)
+        net_transactions[pandas_date] = balance
+
+    transaction_dates = sorted(net_transactions.keys())
+    cummulative_transactions = [0] * len(history_dates)
+
+    for d_ix, d in enumerate(history_dates):
+        for d_transaction in transaction_dates:
+            if d > d_transaction:
+                cummulative_transactions[d_ix] = net_transactions[
+                    d_transaction]
+
+    today = dt.datetime.today()
+    cummulative_transactions = [net_transactions[d] for d in transaction_dates]
+    transaction_dates.append(pd.Timestamp(year=today.year, month=today.month,
+                                          day=today.day))
+    cummulative_transactions.append(cummulative_transactions[-1])
+
+    fig, axes = plt.subplots(ncols=1, figsize=(12, 4))
+    axes.step(transaction_dates, cummulative_transactions, where="post",
+              color="lightblue", alpha=0.7)
+    axes.plot(history_dates, account_history, color="blue")
+    axes.plot(history_dates, benchmark_history, color="red")
+
+    plt.show()
 
 
 def benchmark(account_name, benchmark_symbol="SPY"):
@@ -148,8 +252,8 @@ def piechart(account_name):
     plt.show()
 
 
-def rebalance_account(
-    account,
+def rebalance_porfolio(
+    portfolio,
     additional_cash,
     start_date,
     end_date,
@@ -162,7 +266,7 @@ def rebalance_account(
     Return the orders to be executed to rebalance the current portfolio in
     the `account`.
     """
-    base_portfolio = account.portfolio
+    base_portfolio = portfolio
 
     # Data preparation specific to `base_portfolio`. In particular
     # if an asset in the portfolio is no longer listed, it is considered
