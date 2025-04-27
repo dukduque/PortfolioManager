@@ -80,7 +80,9 @@ class DataManager:
                 self.db = update_database_single_stock(
                     self.db, asset, self.db_file, self.metadata_file
                 )
-        return self.db[assets]
+        df_out = pd.DataFrame(index=self.db.index, columns=assets)
+        df_out.update(self.db)
+        return df_out
 
     def get_metadata(self, asset):
         assert type(asset) == str
@@ -401,8 +403,8 @@ def update_stock_prices(stock_series, retries=3, backoff_seconds=1.0):
     ticker_name = stock_series.name
     stock_nan = stock_series.isna()
     start_date = stock_series[~stock_nan].index.max() + dt.timedelta(days=1)
-    end_date = stock_series.index.max()
-    if start_date > end_date:
+    end_date = stock_series.index.max() + dt.timedelta(days=1)
+    if start_date >= end_date:
         return StockUpdateStatus.OK
     for i in range(retries):
         try:
@@ -420,7 +422,8 @@ def update_stock_prices(stock_series, retries=3, backoff_seconds=1.0):
         time.sleep(sleep_time)
     return StockUpdateStatus.FAILED
 
-def update_database(db, n_proc, unlisted_days_threshold=100):
+
+def update_database(db):
     """
     Updates a database from the last prices.
     If n_proc > 1, runs a mutiprocess version of
@@ -435,21 +438,20 @@ def update_database(db, n_proc, unlisted_days_threshold=100):
     # Sort the columns by the number of missing valuesa and fix the ones
     # with the most number of missing values.
     sorted_columns = db.isna().sum(axis=0).sort_values(ascending=False).index
-    columns_to_drop = []
     for c in sorted_columns:
         download_status = update_stock_prices(db[c])
         if download_status == StockUpdateStatus.NOT_FOUND:
-            columns_to_drop.append(c)
+            # If the stock is not found, we can't remove it because it might
+            # exist in some portfolio at some point in the past.
+            continue
         elif download_status == StockUpdateStatus.FAILED:
             failed_updates.append(c)
     print("Failed to update %i stocks" % len(failed_updates))
     # Drop rows where all values are missing (e.g., weekends)
     db = db[db.isna().sum(axis=1) < len(db.columns)]
-    # Drop columns with all missing values (e.g., delisted stocks)
-    db = db.drop(columns_to_drop, axis=1)
-    # Drop columns where the last `days_back` values are missing
-    db = db.loc[:, ~db.isna().iloc[-unlisted_days_threshold:].all()]
-    # TODO: Fix parallel version
+    # Drop columns where the last `days_back` values are missing.
+    _unlisted_days_threshold = 2500
+    db = db.loc[:, ~db.isna().iloc[-_unlisted_days_threshold:].all()]
     return db
 
 
@@ -459,7 +461,8 @@ def update_database_single_stock(
     db_output_file="close.pkl",
     info_output_file="assets_listing.pkl",
 ):
-
+    # TODO: Modify this function to use the new update function
+    # that already has retries.
     db, status = add_stock(db, ticker_symbol, db.index[0], dt.datetime.today())
     if status:
         save_database(db, db_output_file)
@@ -502,7 +505,7 @@ def run_update_process(
 ):
     db = load_database(db_file_in)
     print(f"Loading db with {len(db.columns)} stocks")
-    db = update_database(db, n_proc, days_back)
+    db = update_database(db)
     print(f"Updating db with {len(db.columns)} stocks")
     save_database(db, db_file_out)
 

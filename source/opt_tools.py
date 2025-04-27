@@ -40,7 +40,6 @@ class CvarParameters:
     # beta = 0, this yields a CVaR minimization model.
     beta: float
 
-
 def default_cvar_parameters() -> CvarParameters:
     return CvarParameters(alpha=0.90, beta=0.95)
 
@@ -113,8 +112,8 @@ class cvar_model_ortools(AbstractModel):
         for s in stocks:
             x_lb = 0 if s not in must_buy else must_buy[s]
             x_ub = (
-                np.max(new_portfolio_value / price)
-                if s not in ignore
+                new_portfolio_value / price[s]
+                if (s not in ignore and price[s] > 0)
                 else np.maximum(0.0, current_portfolio.get_position(s))
             )
             if fractional or current_portfolio.position_is_fractional(s):
