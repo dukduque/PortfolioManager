@@ -236,8 +236,8 @@ def test_account_update_sells_missing_asset():
     assert account.portfolio.get_position('XYZ') == 0
 
 
-def test_account_operations_history():
-    set_account_path(Path(__file__).parent / 'test_data/')
+def test_account_operations_history(tmp_path):
+    set_account_path(tmp_path)
     account = create_new_account('holder_a', dt.datetime(2021, 12, 12))
     account.update_account(dt.datetime(2021, 12, 13, 9, 30),
                            orders=[Order('ABC', 1, 123, OPERATION_BUY)])
@@ -248,28 +248,28 @@ def test_account_operations_history():
                            ])
     account.update_account(dt.datetime(2021, 12, 16, 9, 30),
                            orders=[Order('XYZ', 1, 450, OPERATION_SELL)])
-    
+
     history = account.operations_history()
     assert len(history) == 4
     assert history[0][1] == 123
     assert history[1][1] == 2 * 456
     assert history[2][1] == -0.5 * 123
     assert history[3][1] == -450
-    
+
     account = load_account('holder_a')
     assert account.holder == 'holder_a'
-    
+
     account = load_account('holder_b')
     assert account is None
 
 
-def test_load_account():
-    set_account_path(Path(__file__).parent / 'test_data/')
+def test_load_account(tmp_path):
+    set_account_path(tmp_path)
     create_new_account('holder_a', dt.datetime.now)
-    
+
     account = load_account('holder_a')
     assert account.holder == 'holder_a'
-    
+
     account = load_account('holder_b')
     assert account is None
 
