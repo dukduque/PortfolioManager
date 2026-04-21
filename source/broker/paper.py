@@ -58,3 +58,33 @@ class PaperBroker(BrokerBase):
     def set_market_open(self, is_open: bool) -> None:
         """Test helper: simulate market open/closed state."""
         self._market_open = is_open
+
+
+class CostAwarePaperBroker(PaperBroker):
+    """PaperBroker that applies a bid-ask spread haircut to each fill price.
+
+    Buys are filled at  price * (1 + cost_bps / 10_000).
+    Sells are filled at price * (1 - cost_bps / 10_000).
+    The position qty is unchanged; the cost is captured in the fill price
+    and therefore in the cash accounting when Account.update_account_from_fills
+    is called.
+    """
+
+    def __init__(
+        self,
+        cost_bps: float = 5.0,
+        initial_portfolio: Optional[Portfolio] = None,
+    ):
+        super().__init__(initial_portfolio=initial_portfolio)
+        self._cost_bps = cost_bps
+
+    def submit_order(self, order: Order) -> str:
+        cost_factor = self._cost_bps / 10_000
+        if order.operation_type == OPERATION_BUY:
+            adjusted_price = order.price * (1 + cost_factor)
+        elif order.operation_type == OPERATION_SELL:
+            adjusted_price = order.price * (1 - cost_factor)
+        else:
+            adjusted_price = order.price
+        adjusted = Order(order.ticker, order.qty, adjusted_price, order.operation_type)
+        return super().submit_order(adjusted)

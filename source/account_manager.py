@@ -18,183 +18,63 @@ from resources import (
     build_account_history,
 )
 from opt_tools import cvar_model_ortools, default_cvar_parameters
+from backtest import build_equity_curve, build_benchmark_curve
 
 
 def read_account(account_name):
     account = load_account(account_name)
 
 
-def benchmark2(account_name, benchmark_symbol="SPY"):
-    account = load_account(account_name)
-    portfolios = account.portfolios
-    portfolio_dates = sorted(portfolios.keys())
+def benchmark2(account_name, benchmark_symbol="SPY", save_figure=None):
+    """Plot account equity curve vs a benchmark.
 
+    The benchmark receives the same cash flows (deposits/withdrawals) as the
+    account. save_figure: path to save the plot, or None to display it.
+    """
+    account = load_account(account_name)
     data_manager = DataManager(db_file="close.pkl")
-    SPY_prices = data_manager.get_prices(benchmark_symbol)
 
-    benchmark_quantity = 0
-    account_history, history_dates, benchmark_history = [], [], []
-
-    last_valid_price = defaultdict(float)
-    last_portfolio_value = 0
-
-    for date_ix, portfolio_date in enumerate(portfolio_dates):
-        current_portfolio = portfolios[portfolio_date]
-        if not current_portfolio.assets:
-            continue
-
-        assets_data = data_manager.get_prices(current_portfolio.assets)
-        pd_date = pd.Timestamp(year=portfolio_date.year,
-                               month=portfolio_date.month,
-                               day=portfolio_date.day)
-
-        for asset in assets_data.columns:
-            price = assets_data[asset].loc[pd_date]
-            if not math.isnan(price):
-                last_valid_price[asset] = price
-
-        benchmark_price_on_date = SPY_prices.loc[pd_date]
-        if not math.isnan(benchmark_price_on_date):
-            last_valid_price[benchmark_symbol] = benchmark_price_on_date
-
-        portfolio_value = sum(
-            current_portfolio.get_position(asset) * last_valid_price[asset]
-            for asset in current_portfolio.assets
-        )
-
-        benchmark_quantity += (portfolio_value - last_portfolio_value) / \
-                              last_valid_price[benchmark_symbol]
-        last_portfolio_value = portfolio_value
-
-        start_date = dt.datetime(portfolio_date.year,
-                                 portfolio_date.month,
-                                 portfolio_date.day)
-        end_date = portfolio_dates[date_ix + 1] if date_ix + 1 < len(
-            portfolio_dates) else dt.datetime.today()
-        end_date = dt.datetime(end_date.year, end_date.month, end_date.day)
-
-        assets_data = assets_data[(assets_data.index >= start_date) &
-                                  (assets_data.index <= end_date)]
-
-        for d in assets_data.index:
-            total_assets_d = 0
-            prices_d = assets_data.loc[d]
-            for asset in prices_d.index:
-                asset_price_at_d = prices_d.loc[asset]
-                if not math.isnan(asset_price_at_d):
-                    last_valid_price[asset] = asset_price_at_d
-                total_assets_d += last_valid_price[asset] * \
-                                  current_portfolio.get_position(asset)
-
-            account_history.append(total_assets_d)
-
-            benchmark_price_on_date = SPY_prices.loc[d]
-            if not math.isnan(benchmark_price_on_date):
-                last_valid_price[benchmark_symbol] = benchmark_price_on_date
-
-            benchmark_history.append(last_valid_price[benchmark_symbol] *
-                                     benchmark_quantity)
-            history_dates.append(d)
-
-    net_transactions = {}
-    balance = 0
-    for op_date, op_value in account.operations_history():
-        balance += op_value
-        pandas_date = pd.Timestamp(year=op_date.year, month=op_date.month,
-                                   day=op_date.day)
-        net_transactions[pandas_date] = balance
-
-    transaction_dates = sorted(net_transactions.keys())
-    cummulative_transactions = [0] * len(history_dates)
-
-    for d_ix, d in enumerate(history_dates):
-        for d_transaction in transaction_dates:
-            if d > d_transaction:
-                cummulative_transactions[d_ix] = net_transactions[
-                    d_transaction]
-
-    today = dt.datetime.today()
-    cummulative_transactions = [net_transactions[d] for d in transaction_dates]
-    transaction_dates.append(pd.Timestamp(year=today.year, month=today.month,
-                                          day=today.day))
-    cummulative_transactions.append(cummulative_transactions[-1])
+    account_curve = build_equity_curve(account, data_manager)
+    bench_curve = build_benchmark_curve(account, benchmark_symbol, data_manager)
 
     fig, axes = plt.subplots(ncols=1, figsize=(12, 4))
-    axes.step(transaction_dates, cummulative_transactions, where="post",
-              color="lightblue", alpha=0.7)
-    axes.plot(history_dates, account_history, color="blue")
-    axes.plot(history_dates, benchmark_history, color="red")
+    axes.plot(account_curve.index, account_curve.values, color="blue",
+              label="Portfolio")
+    axes.plot(bench_curve.index, bench_curve.values, color="red",
+              label=benchmark_symbol)
+    axes.legend()
 
-    plt.show()
+    if save_figure:
+        fig.savefig(save_figure)
+    else:
+        plt.show()
+    return fig
 
 
-def benchmark(account_name, benchmark_symbol="SPY"):
-    """
-    Benchmarks an account against `benchmark_symbol`.
+def benchmark(account_name, benchmark_symbol="SPY", save_figure=None):
+    """Plot account equity curve vs a benchmark.
+
+    The benchmark receives the same cash flows (deposits/withdrawals) as the
+    account. save_figure: path to save the plot, or None to display it.
     """
     account = load_account(account_name)
+    data_manager = DataManager(db_file="close.pkl")
 
-    file_name = "close.pkl"
-    data_manager = DataManager(db_file=file_name)
-    sp500_stocks = dbh.get_sp500_tickers()
-
-    sp500_portfolios = {}
-    ini_portfolio = Portfolio.create_empty()
-    SPY_prices = data_manager.get_prices(benchmark_symbol)
-    net_transactions = {}
-    balance = 0
-    for op_date, op_value in account.operations_history():
-        balance += op_value
-        pandas_date = pd.Timestamp(
-            year=op_date.year, month=op_date.month, day=op_date.day
-        )
-        date_ix = np.where(SPY_prices.index == pandas_date)[0][0]
-        price_on_date = SPY_prices.iloc[date_ix][0]
-        qty_delta = op_value / price_on_date
-        current_qty = ini_portfolio.get_position(benchmark_symbol)
-        portfolio_on_date = Portfolio.create_empty()
-        portfolio_on_date.modify_position(
-            benchmark_symbol, current_qty + qty_delta
-        )
-        sp500_portfolios[op_date] = portfolio_on_date
-        ini_portfolio = sp500_portfolios[op_date]
-        net_transactions[pandas_date] = balance
-
-    history_dates, sp_500_history_values = build_account_history(
-        sp500_portfolios, data_manager
-    )
-    history_dates, history_values = build_account_history(
-        account.portfolios, data_manager
-    )
-    sp_500_history_values.insert(0, 0)
-
-    transaction_dates = list(net_transactions.keys())
-    transaction_dates.sort()
-    cummulative_transactions = [0] * len(history_dates)
-    last_date_ix = 0
-    for d_ix, d in enumerate(history_dates):
-        for d_transaction in transaction_dates:
-            if d > d_transaction:
-                cummulative_transactions[d_ix] = net_transactions[d_transaction]
-    today = dt.datetime.today()
-    cummulative_transactions = [net_transactions[d] for d in transaction_dates]
-    transaction_dates.append(
-        pd.Timestamp(year=today.year, month=today.month, day=today.day)
-    )
-    cummulative_transactions.append(cummulative_transactions[-1])
+    account_curve = build_equity_curve(account, data_manager)
+    bench_curve = build_benchmark_curve(account, benchmark_symbol, data_manager)
 
     fig, axes = plt.subplots(ncols=1, figsize=(12, 4))
-    axes.step(
-        transaction_dates,
-        cummulative_transactions,
-        where="post",
-        color="lightblue",
-        alpha=0.7,
-    )
-    axes.plot(history_dates, history_values, color="blue")
-    axes.plot(history_dates, sp_500_history_values, color="red")
+    axes.plot(account_curve.index, account_curve.values, color="blue",
+              label="Portfolio")
+    axes.plot(bench_curve.index, bench_curve.values, color="red",
+              label=benchmark_symbol)
+    axes.legend()
 
-    plt.show()
+    if save_figure:
+        fig.savefig(save_figure)
+    else:
+        plt.show()
+    return fig
 
 
 def piechart(account_name):
@@ -259,19 +139,24 @@ def rebalance_porfolio(
     end_date,
     data_file_name="close.pkl",
     metadata_file_name="metadata.pkl",
+    data_manager=None,
     print_portfolio=True,
     **kwargs,
 ):
     """
     Return the orders to be executed to rebalance the current portfolio in
     the `account`.
+
+    data_manager: optional pre-constructed DataManager (or compatible object).
+    If None, one is created from data_file_name / metadata_file_name.
     """
     base_portfolio = portfolio
 
     # Data preparation specific to `base_portfolio`. In particular
     # if an asset in the portfolio is no longer listed, it is considered
     # to have a price time series of zero.
-    data_manager = DataManager(data_file_name, metadata_file_name)
+    if data_manager is None:
+        data_manager = DataManager(data_file_name, metadata_file_name)
     returns = data_manager.get_returns(start_date, end_date)
     current_price = data_manager.get_prices(returns.columns).loc[end_date]
     for asset in base_portfolio.assets:

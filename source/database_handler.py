@@ -110,8 +110,9 @@ class DataManager:
         """
         Computes returns from specific dates and list of securities.
         """
-        if len(stocks) == 0 and hasattr(self, "_returns"):
-            return self._returns
+        cache_key = (start_date, end_date)
+        if len(stocks) == 0 and hasattr(self, "_returns_cache") and cache_key in self._returns_cache:
+            return self._returns_cache[cache_key]
 
         for s in stocks:
             if s not in self.db.columns:
@@ -127,7 +128,10 @@ class DataManager:
         db_r = db.apply(quotien_diff, axis=0)  # compute returns
         db_r = db_r[db_r < outlier_return].dropna(axis=0)  # Filter outliers
 
-        self._returns = db_r
+        if len(stocks) == 0:
+            if not hasattr(self, "_returns_cache"):
+                self._returns_cache = {}
+            self._returns_cache[cache_key] = db_r
         return db_r
 
     def repair_data(self, stock_symbol, start_date):
