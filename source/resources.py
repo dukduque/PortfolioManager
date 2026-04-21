@@ -8,6 +8,7 @@ import numpy as np
 import copy
 import pickle
 import math
+from dataclasses import dataclass
 from pathlib import Path
 from collections import defaultdict
 
@@ -120,13 +121,28 @@ class Order:
         self.qty = qty
         self.price = price
         self.operation_type = operation_type
-    
+
     def __str__(self):
         return f"{self.operation_type} {self.ticker} : {self.qty}" + \
             f" : {self.price:.4f}"
-    
+
     def __repr__(self):
         return self.__str__()
+
+
+@dataclass
+class Fill:
+    """Broker-confirmed execution of an order.
+
+    Unlike Order (which uses the optimizer's estimated price), Fill records
+    the actual price and time at which the broker executed the trade.
+    """
+    ticker: str
+    qty: float
+    fill_price: float
+    operation_type: str
+    fill_time: dt.datetime
+    broker_order_id: str
 
 
 class Account:
@@ -147,28 +163,28 @@ class Account:
         return self.portfolios[self.last_transaction]
     
     def deposit(self, deposit_date, amount):
-        self.cash_flow = self.cash_flow.append(
-            {
+        self.cash_flow = pd.concat(
+            [self.cash_flow, pd.DataFrame([{
                 "datetime": deposit_date,
                 "amount": amount,
                 "type": "deposit",
-            },
+            }])],
             ignore_index=True)
         self.cash_onhand = self.cash_onhand + amount
         return True
-    
+
     def withdraw(self, withdraw_date, amount):
         '''
         Withdraw money from cash onhand.
         '''
         if (self.cash_onhand < amount):
             return False
-        self.cash_flow = self.cash_flow.append(
-            {
+        self.cash_flow = pd.concat(
+            [self.cash_flow, pd.DataFrame([{
                 "datetime": withdraw_date,
                 "amount": amount,
                 "type": "withdraw",
-            },
+            }])],
             ignore_index=True)
         self.cash_onhand = self.cash_onhand - amount
         return True
@@ -188,22 +204,40 @@ class Account:
         if new_portfolio:
             self.last_transaction = transaction_date
             self.portfolios[transaction_date] = new_portfolio
+            rows = []
             for order in orders:
-                self.transactions = self.transactions.append(
-                    {
-                        "ticker": order.ticker,
-                        "datetime": transaction_date,
-                        "operation": order.operation_type,
-                        "qty": order.qty,
-                        "price": order.price,
-                    },
-                    ignore_index=True)
+                rows.append({
+                    "ticker": order.ticker,
+                    "datetime": transaction_date,
+                    "operation": order.operation_type,
+                    "qty": order.qty,
+                    "price": order.price,
+                })
                 if order.operation_type == OPERATION_BUY:
                     self.cash_onhand -= order.qty * order.price
                 elif order.operation_type == OPERATION_SELL:
                     self.cash_onhand += order.qty * order.price
+            if rows:
+                self.transactions = pd.concat(
+                    [self.transactions, pd.DataFrame(rows)], ignore_index=True)
             return True
         return False
+
+    def update_account_from_fills(self, transaction_date, fills):
+        '''
+        Updates the account using broker-confirmed fills rather than
+        optimizer-estimated prices. Uses the actual fill_price from each
+        Fill for cash accounting.
+
+        Args:
+            transaction_date (datetime): date of the transaction.
+            fills (list of Fill): broker-confirmed fills.
+        '''
+        orders = [
+            Order(f.ticker, f.qty, f.fill_price, f.operation_type)
+            for f in fills
+        ]
+        return self.update_account(transaction_date, orders)
     
     def operations_history(self):
         history = []
@@ -233,14 +267,14 @@ class Account:
         qty_delta = new_qty_with_split - new_qty
         self.cash_onhand += qty_delta * new_price
         operation_type = OPERATION_SPLIT if ratio > 1 else OPERATION_REVERSE_SPLIT
-        self.transactions = self.transactions.append(
-            {
+        self.transactions = pd.concat(
+            [self.transactions, pd.DataFrame([{
                 "ticker": asset,
                 "datetime": split_date,
                 "operation": operation_type,
                 "qty": new_qty_with_split,
                 "price": new_price,
-            },
+            }])],
             ignore_index=True)
         self.portfolios[split_date] = copy.deepcopy(self.portfolio)
         self.last_transaction = split_date
