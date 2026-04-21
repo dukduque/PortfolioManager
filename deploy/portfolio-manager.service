@@ -1,0 +1,53 @@
+# systemd service unit for the PortfolioManager daily job.
+#
+# Install:
+#   sudo cp portfolio-manager.service /etc/systemd/system/
+#   sudo cp portfolio-manager.timer   /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now portfolio-manager.timer
+#
+# Check logs:
+#   journalctl -u portfolio-manager.service -f
+#   tail -f /var/log/portfolio-manager/portfolio.log
+#   tail -f /var/log/portfolio-manager/audit.log
+
+[Unit]
+Description=PortfolioManager daily rebalancing job
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+
+# Run as a dedicated non-root user for isolation.
+# Create with: sudo useradd -r -s /sbin/nologin portfolio
+User=portfolio
+Group=portfolio
+
+WorkingDirectory=/opt/portfolio-manager
+
+# Secrets are stored in this file with chmod 600, owned by portfolio.
+# Never put secrets in this unit file (it is world-readable).
+EnvironmentFile=/etc/portfolio-manager/secrets.env
+
+ExecStart=/opt/portfolio-manager/venv/bin/python run_daily.py
+
+# Restart on failure, up to 3 times, waiting 15 min between attempts.
+# This handles transient network issues; persistent failures alert via logs.
+Restart=on-failure
+RestartSec=900
+StartLimitBurst=3
+StartLimitIntervalSec=3600
+
+# Security hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ReadWritePaths=/opt/portfolio-manager/accounts /opt/portfolio-manager/run_state /opt/portfolio-manager/logs /var/log/portfolio-manager
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=portfolio-manager
+
+[Install]
+WantedBy=multi-user.target

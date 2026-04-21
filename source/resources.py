@@ -3,11 +3,13 @@ This module contains various data structures for data manipulation,
 optimization, and backtesting
 """
 import datetime as dt
+import os
 import pandas as pd
 import numpy as np
 import copy
 import pickle
 import math
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 from collections import defaultdict
@@ -320,6 +322,44 @@ def save_account(account):
                 pickle.HIGHEST_PROTOCOL)
     path_account_class = path_to_account / 'AccountClass'
     pickle.dump(Account, path_account_class.open("wb"), pickle.HIGHEST_PROTOCOL)
+
+
+def save_account_atomic(account):
+    """Atomic variant of save_account: pickle to a temp file, then rename.
+
+    The rename is atomic on the same filesystem, so a crash mid-write never
+    leaves a corrupt .acc file referenced by index.txt.
+    """
+    backup_name = (
+        str(dt.datetime.now())
+        .replace(".", "").replace(":", "").replace(" ", "").replace("-", "")
+        + ".acc"
+    )
+    path_to_account = accounts_path / account.holder
+    if not path_to_account.exists():
+        path_to_account.mkdir(parents=True)
+
+    backup_file = path_to_account / backup_name
+    fd, tmp_path = tempfile.mkstemp(dir=path_to_account, suffix=".acc.tmp")
+    try:
+        with os.fdopen(fd, "wb") as f:
+            pickle.dump(account, f, pickle.HIGHEST_PROTOCOL)
+        os.replace(tmp_path, backup_file)  # atomic on same filesystem
+    except Exception:
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            pass
+        raise
+
+    index_file = path_to_account / "index.txt"
+    with open(index_file, "a") as writer:
+        writer.write(backup_name)
+
+    pickle.dump(Portfolio, (path_to_account / "PortfolioClass").open("wb"),
+                pickle.HIGHEST_PROTOCOL)
+    pickle.dump(Account, (path_to_account / "AccountClass").open("wb"),
+                pickle.HIGHEST_PROTOCOL)
 
 
 def load_account(account_name):

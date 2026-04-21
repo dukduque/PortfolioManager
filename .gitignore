@@ -26,3 +26,12 @@
 
 # Unused files
 *broken/
+
+# Runtime state (idempotency markers, lock files)
+run_state/
+
+# Log output
+logs/
+
+# Account data directories
+accounts/
