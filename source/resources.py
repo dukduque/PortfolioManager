@@ -294,10 +294,12 @@ def set_account_path(new_path_to_account):
     accounts_path = new_path_to_account
 
 
-def create_new_account(account_name, opening_date=dt.datetime.now):
+def create_new_account(account_name, opening_date=None):
     '''
     Creates a new account instance an saves it at `accounts_path/account_name`
     '''
+    if opening_date is None:
+        opening_date = dt.datetime.now()
     account = Account(account_name, opening_date)
     save_account(account)
     return account

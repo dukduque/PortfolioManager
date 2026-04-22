@@ -216,14 +216,14 @@ def get_market_cap(ticker_str):
 
 def get_sp500_tickers():
     path_to_file = Path(os.path.join(path_to_data, "sp500.pkl"))
-    if not path_to_file.exists:
+    if not path_to_file.exists():
         save_sp500_tickers()
     return pickle.load(path_to_file.open("rb"))
 
 
 def get_tickers_metadata(meta_data_file):
     path_to_file = Path(os.path.join(path_to_data, meta_data_file))
-    if not path_to_file.exists:
+    if not path_to_file.exists():
         return {}
     return pickle.load(path_to_file.open("rb"))
 

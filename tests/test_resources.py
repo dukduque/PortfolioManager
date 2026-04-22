@@ -265,13 +265,23 @@ def test_account_operations_history(tmp_path):
 
 def test_load_account(tmp_path):
     set_account_path(tmp_path)
-    create_new_account('holder_a', dt.datetime.now)
+    create_new_account('holder_a', dt.datetime.now())
 
     account = load_account('holder_a')
     assert account.holder == 'holder_a'
 
     account = load_account('holder_b')
     assert account is None
+
+
+def test_create_new_account_default_date_is_datetime(tmp_path):
+    """create_new_account() with no explicit date must store a datetime, not a function."""
+    set_account_path(tmp_path)
+    account = create_new_account('check_date')
+    assert isinstance(account.last_transaction, dt.datetime), (
+        "opening_date default was not evaluated — got "
+        f"{type(account.last_transaction)} instead of datetime"
+    )
 
 
 def test_generate_orders():
