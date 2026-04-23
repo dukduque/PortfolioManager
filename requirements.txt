@@ -7,6 +7,7 @@ ortools==8.0.8283
 pytest==6.2.4
 yfinance==0.1.63
 alpaca-py>=0.18.0
+pyarrow>=14.0.0
 beautifulsoup4==4.9.3
 python-dotenv>=1.0.0
 pandas-market-calendars>=4.3.0

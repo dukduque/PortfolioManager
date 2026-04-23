@@ -165,7 +165,6 @@ def main() -> int:
 
 
 def _run(log, audit, today: dt.date) -> int:
-    from database_handler import DataManager
     from resources import (
         load_account, save_account_atomic, set_account_path,
         Portfolio, generate_orders, OPERATION_BUY, OPERATION_SELL,
@@ -179,11 +178,13 @@ def _run(log, audit, today: dt.date) -> int:
     lookback_days  = _env_int("LOOKBACK_DAYS", 252)
     benchmark      = _env("BENCHMARK_SYMBOL", "SPY")
     fractional     = _env_bool("FRACTIONAL_SHARES", True)
-    data_file      = _env("DATA_FILE", "close.pkl")
-    meta_file      = _env("METADATA_FILE", "metadata.pkl")
+    data_file      = _env("DATA_FILE", "data/close.pkl")
+    meta_file      = _env("METADATA_FILE", "data/metadata.pkl")
     paper_mode     = _env_bool("ALPACA_PAPER", True)
     api_key        = _env("ALPACA_API_KEY")
     secret_key     = _env("ALPACA_SECRET_KEY")
+    data_source    = _env("DATA_SOURCE", "local")
+    cache_dir      = _env("DATA_CACHE_DIR", "data/cache/alpaca")
     run_dir        = Path(_env("RUN_STATE_DIR", "run_state"))
 
     set_account_path(account_dir)
@@ -204,12 +205,24 @@ def _run(log, audit, today: dt.date) -> int:
 
     # ── 4. Data manager ────────────────────────────────────────────────────
     try:
-        data_manager = DataManager(
-            db_file=data_file,
-            metadata_file=meta_file,
-        )
+        if data_source == "alpaca":
+            from data.alpaca import AlpacaDataManager
+            data_manager = AlpacaDataManager(
+                api_key=api_key,
+                secret_key=secret_key,
+                cache_dir=Path(cache_dir),
+            )
+            # Refresh cache before optimising — only fetches the missing tail.
+            account_tickers = list(account.portfolio.assets) + [benchmark]
+            data_manager.refresh_cache(account_tickers)
+        else:
+            from data.local import LocalDataManager
+            data_manager = LocalDataManager(
+                db_file=data_file,
+                metadata_file=meta_file,
+            )
     except Exception as exc:
-        log.error("Failed to load data manager: %s", exc)
+        log.error("Failed to initialise data manager (%s): %s", data_source, exc)
         return 1
 
     # ── 5. Generate orders via CVaR optimizer ──────────────────────────────

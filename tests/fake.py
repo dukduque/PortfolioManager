@@ -1,21 +1,20 @@
 """Fake data helpers for hermetic testing.
 
 FakeDataManager accepts a pre-built price DataFrame and implements the same
-interface as DataManager (get_prices, get_returns, get_metadata) without any
-disk I/O or network calls.  Import it in test modules that need price data.
+interface as DataManagerBase without any disk I/O or network calls.
 """
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "source"))
+
 import numpy as np
 import pandas as pd
 
-
-def _quotient_diff(series):
-    """Same return computation as database_handler.quotien_diff."""
-    y = np.array(series)
-    return pd.Series(y[1:] / y[:-1], index=series.index[1:])
+from data.base import DataManagerBase, EMPTY_METADATA, quotient_diff
 
 
-class FakeDataManager:
-    """In-memory DataManager backed by a synthetic price DataFrame.
+class FakeDataManager(DataManagerBase):
+    """In-memory DataManagerBase backed by a synthetic price DataFrame.
 
     Args:
         prices: DataFrame with tickers as columns and dates as index.
@@ -46,17 +45,12 @@ class FakeDataManager:
         df = df.dropna(axis=1)
         if len(df) < 2:
             return pd.DataFrame()
-        db_r = df.apply(_quotient_diff, axis=0)
+        db_r = df.apply(quotient_diff, axis=0)
         db_r = db_r[db_r < outlier_return].dropna(axis=0)
         return db_r
 
     def get_metadata(self, asset: str) -> dict:
-        return {
-            "name": asset,
-            "sector": "Unknown",
-            "subsector": "",
-            "market_cap": 0,
-        }
+        return {**EMPTY_METADATA, "name": asset, "sector": "Unknown"}
 
 
 def make_prices(
