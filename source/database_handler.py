@@ -30,13 +30,7 @@ parent_path = os.path.abspath(os.path.join(path_to_file, os.pardir))
 sys.path.insert(0, parent_path)
 path_to_data = os.path.abspath(os.path.join(parent_path, "data"))
 from source import util
-
-EMPTY_METADATA = {
-    "name": "",
-    "sector": "",
-    "subsector": "",
-    "market_cap": "",
-}
+from data.base import EMPTY_METADATA, quotient_diff as quotien_diff  # noqa: F401
 
 
 def set_data_path(new_path_to_data):
@@ -54,115 +48,9 @@ def set_data_path(new_path_to_data):
     return path_is_new
 
 
-class DataManager:
-    """
-    An instance of this class access and maintains the data.
-    """
-
-    def __init__(self, db_file="close.pkl", metadata_file="metadata.pkl"):
-        self.db = load_database(db_file)
-        self.metadata = get_tickers_metadata(metadata_file)
-        self.db_file = db_file
-        self.metadata_file = metadata_file
-
-    def get_prices(self, assets=None):
-        """
-        assets (str or list): an asset or list of assets.
-        """
-        if assets is None or len(assets) == 0:
-            return self.db
-
-        if type(assets) == str:
-            assets = [assets]
-
-        for asset in assets:
-            if asset not in self.db.columns:
-                self.db = update_database_single_stock(
-                    self.db, asset, self.db_file, self.metadata_file
-                )
-        df_out = pd.DataFrame(index=self.db.index, columns=assets)
-        df_out.update(self.db)
-        return df_out
-
-    def get_metadata(self, asset):
-        assert type(asset) == str
-        if asset in self.metadata:
-            return self.metadata[asset]
-        try:
-            asset_ticket = yf.Ticker(asset)
-            info = asset_ticket.info
-            self.metadata[asset] = EMPTY_METADATA.copy()
-            self.metadata[asset]["name"] = info["shortName"]
-            self.metadata[asset]["quoteType"] = info["quoteType"]
-            if info["quoteType"] == "ETF":
-                self.metadata[asset]["sector"] = "ETF"
-                self.metadata[asset]["industry"] = "ETF"
-            elif info["quoteType"] == "EQUITY":
-                self.metadata[asset]["sector"] = info["sector"]
-                self.metadata[asset]["industry"] = info["industry"]
-        except Exception:
-            self.metadata[asset] = EMPTY_METADATA
-            self.metadata[asset]["name"] = asset
-        save_metadata(self.metadata, self.metadata_file)
-        return self.metadata[asset]
-
-    def get_returns(self, start_date, end_date, stocks=[], outlier_return=10):
-        """
-        Computes returns from specific dates and list of securities.
-        """
-        if len(stocks) == 0 and hasattr(self, "_returns"):
-            return self._returns
-
-        for s in stocks:
-            if s not in self.db.columns:
-                try:
-                    self.get_prices(s)
-                    self.get_metadata(s)
-                except Exception:
-                    print(f"Fail while obtaining data from security {s}")
-        db = self.db[self.db.index >= start_date]
-        db = db[db.index <= end_date]
-        db = db.dropna(axis=0, how="all")
-        db = db.dropna(axis=1)
-        db_r = db.apply(quotien_diff, axis=0)  # compute returns
-        db_r = db_r[db_r < outlier_return].dropna(axis=0)  # Filter outliers
-
-        self._returns = db_r
-        return db_r
-
-    def repair_data(self, stock_symbol, start_date):
-        if stock_symbol not in self.db.columns:
-            return
-        stock = yf.Ticker(stock_symbol)
-        trials = 3
-        for repairing_date in reversed(self.db.index):
-            if repairing_date < start_date:
-                break
-            if np.isnan(self.db.loc[repairing_date, stock_symbol]):
-                time.sleep(np.random.uniform(0, 0.1))
-                update = stock.history(
-                    start=repairing_date,
-                    end=repairing_date + dt.timedelta(days=1),
-                ).Close
-                if (
-                    repairing_date in update.index
-                    and update.loc[repairing_date] != np.nan
-                ):
-                    self.db.loc[repairing_date, stock_symbol] = update.loc[
-                        repairing_date
-                    ]
-                else:
-                    print("Not repaired", stock_symbol, repairing_date)
-                    trials -= 1
-                    if trials == 0:
-                        print("Still nan")
-                        break
-
-        save_database(self.db, self.db_file)
-
-    @property
-    def securities(self):
-        return list(self.db.columns)
+# DataManager is the backward-compatible alias for the local pickle workflow.
+# New code should import from data.local or data.alpaca directly.
+from data.local import LocalDataManager as DataManager  # noqa: F401
 
 
 def save_sp500_tickers():
@@ -212,14 +100,14 @@ def get_market_cap(ticker_str):
 
 def get_sp500_tickers():
     path_to_file = Path(os.path.join(path_to_data, "sp500.pkl"))
-    if not path_to_file.exists:
+    if not path_to_file.exists():
         save_sp500_tickers()
     return pickle.load(path_to_file.open("rb"))
 
 
 def get_tickers_metadata(meta_data_file):
     path_to_file = Path(os.path.join(path_to_data, meta_data_file))
-    if not path_to_file.exists:
+    if not path_to_file.exists():
         return {}
     return pickle.load(path_to_file.open("rb"))
 
@@ -345,15 +233,7 @@ def add_stock(db, stock_symbol, start=None, end=None):
         return db, False
 
 
-def quotien_diff(x):
-    """
-    Computes a division diff operation. Used to compute
-    return out of stock prices.
-    Args:
-        x (DataSeries): pandas data series
-    """
-    y = np.array(x)
-    return pd.Series(y[1:] / y[:-1], index=x[1:].index)
+# quotien_diff is now imported from data.base as an alias above.
 
 
 def get_returns(

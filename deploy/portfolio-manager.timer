@@ -1,0 +1,23 @@
+# systemd timer — triggers the daily job at 10:00 ET on weekdays.
+#
+# OnCalendar uses UTC.  NYSE opens at 09:30 ET; 10:00 ET = 15:00 UTC (EDT)
+# or 14:00 UTC (EST, Nov–Mar).  Using 15:00 UTC is safe year-round because
+# the job itself checks pandas_market_calendars and exits on holidays/weekends.
+#
+# Adjust the hour if your server is always on EST (use 15 Nov–Mar, 14 Apr–Oct).
+
+[Unit]
+Description=PortfolioManager daily rebalancing timer
+Requires=portfolio-manager.service
+
+[Timer]
+# Fire at 15:00 UTC Mon–Fri (= 10:00 ET during EDT / 11:00 ET during EST).
+# The run_daily.py NYSE check handles the EST/EDT difference correctly.
+OnCalendar=Mon..Fri 15:00:00 UTC
+# If the system was off at trigger time, run as soon as it comes back up
+# (within 60 seconds of boot, capped at the next scheduled trigger time).
+Persistent=true
+RandomizedDelaySec=60
+
+[Install]
+WantedBy=timers.target

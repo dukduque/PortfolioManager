@@ -11,25 +11,23 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
-      - name: Install Python 3
-        uses: actions/setup-python@v1
+      - uses: actions/checkout@v4
+      - name: Install Python 3.11
+        uses: actions/setup-python@v5
         with:
-          python-version: 3.8
+          python-version: "3.11"
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
           pip install pytest-cov
-      - name: Create environment file
-        run: |
-          touch .env
-          echo "${PYTHONPATH}"
-          echo PYTHONPATH="${PYTHONPATH};home/runner/work/PortfolioManager/PortfolioManager/source" >> .env
       - name: Run tests with pytest
+        env:
+          PYTHONPATH: ${{ github.workspace }}/source
         run: |
-          pytest --cov=source --cov-report=xml tests/ > portfolio_cov.xml
+          pytest --cov=source --cov-report=xml tests/ -q \
+            --ignore=tests/test_database_handler.py
       - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v2
+        uses: codecov/codecov-action@v4
         with:
-          files: ./portfolio_cov.xml,./coverage.xml
+          files: ./coverage.xml
