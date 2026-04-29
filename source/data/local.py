@@ -37,7 +37,6 @@ class LocalDataManager(DataManagerBase):
         self.metadata = get_tickers_metadata(metadata_file)
         self.db_file = db_file
         self.metadata_file = metadata_file
-        self._returns_cache: dict = {}
 
     def get_prices(self, assets=None) -> pd.DataFrame:
         if assets is None or (hasattr(assets, '__len__') and len(assets) == 0):
@@ -60,40 +59,6 @@ class LocalDataManager(DataManagerBase):
         out = pd.DataFrame(index=self.db.index, columns=assets)
         out.update(self.db)
         return out
-
-    def get_returns(
-        self,
-        start_date,
-        end_date,
-        stocks=None,
-        outlier_return: float = 10,
-    ) -> pd.DataFrame:
-        stocks = stocks or []
-        cache_key = (start_date, end_date)
-        if not stocks and cache_key in self._returns_cache:
-            return self._returns_cache[cache_key]
-
-        for s in stocks:
-            if s not in self.db.columns:
-                try:
-                    self.get_prices(s)
-                except Exception:
-                    log.warning("Failed to obtain data for %s", s)
-
-        db = self.db[
-            (self.db.index >= pd.Timestamp(start_date)) &
-            (self.db.index <= pd.Timestamp(end_date))
-        ]
-        db = db.dropna(axis=0, how="all").dropna(axis=1)
-        if len(db) < 2:
-            return pd.DataFrame()
-
-        db_r = db.apply(quotient_diff, axis=0)
-        db_r = db_r[db_r < outlier_return].dropna(axis=0)
-
-        if not stocks:
-            self._returns_cache[cache_key] = db_r
-        return db_r
 
     def get_metadata(self, asset: str) -> dict:
         import yfinance as yf

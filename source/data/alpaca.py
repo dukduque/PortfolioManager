@@ -145,21 +145,39 @@ class AlpacaDataManager(DataManagerBase):
         self,
         tickers: List[str],
         end_date=None,
+        force: bool = False,
     ) -> None:
         """Fetch missing price history for *tickers* and update the cache.
 
-        Only the tail that is absent from each ticker's parquet file is
-        fetched from Alpaca.  For a warm cache (daily run) this is typically
-        one trading day per ticker, resolved in a single bulk API call.
+        This is called by run_daily.py once per trading day, before the CVaR
+        optimiser runs.  It finds the last cached date for each ticker and
+        fetches only the missing tail from Alpaca in a single bulk API call.
+        For a warm cache this is typically one row per ticker.
+
+        Corporate actions (splits, spin-offs) invalidate historical adjusted-
+        close prices retroactively.  When Alpaca re-issues corrected bars the
+        cached series becomes inconsistent at the join point.  Pass
+        ``force=True`` for any affected tickers to delete their cache files
+        and re-download the full history from _DEFAULT_HISTORY_START.
 
         Args:
             tickers:  List of ticker symbols to refresh.
             end_date: Last date to fetch (inclusive).  Defaults to yesterday
                       so we never request an incomplete trading day.
+            force:    If True, delete the existing cache file for each ticker
+                      before fetching, forcing a full re-download.  Use after
+                      a stock split or other corporate action.
         """
         if end_date is None:
             end_date = dt.date.today() - dt.timedelta(days=1)
         end_date = _to_date(end_date)
+
+        if force:
+            for ticker in tickers:
+                path = self._cache_path(ticker)
+                if path.exists():
+                    path.unlink()
+                    log.info("Deleted cache for %s (force=True).", ticker)
 
         # Determine the fetch window for each ticker.
         fetch_start: dict[str, dt.date] = {}
@@ -246,8 +264,12 @@ class AlpacaDataManager(DataManagerBase):
             DataFrame with DatetimeIndex and ticker columns.
         """
         if assets is None:
-            # Return all cached tickers.
             assets = [p.stem for p in self._cache_dir.glob("*.parquet")]
+            if not assets:
+                raise RuntimeError(
+                    f"No parquet cache files found in '{self._cache_dir}'. "
+                    "Call refresh_cache() before get_prices()."
+                )
 
         if isinstance(assets, str):
             assets = [assets]
@@ -266,33 +288,6 @@ class AlpacaDataManager(DataManagerBase):
             return pd.DataFrame()
 
         return pd.DataFrame(frames).sort_index()
-
-    def get_returns(
-        self,
-        start_date,
-        end_date,
-        stocks=None,
-        outlier_return: float = 10,
-    ) -> pd.DataFrame:
-        stocks = stocks or []
-        assets = stocks if stocks else None
-        prices = self.get_prices(assets)
-
-        if prices.empty:
-            return pd.DataFrame()
-
-        # Filter to the requested date window.
-        start_ts = pd.Timestamp(start_date)
-        end_ts = pd.Timestamp(end_date)
-        prices = prices[(prices.index >= start_ts) & (prices.index <= end_ts)]
-        prices = prices.dropna(axis=0, how="all").dropna(axis=1)
-
-        if len(prices) < 2:
-            return pd.DataFrame()
-
-        returns = prices.apply(quotient_diff, axis=0)
-        returns = returns[returns < outlier_return].dropna(axis=0)
-        return returns
 
     def get_metadata(self, asset: str) -> dict:
         """Return asset name and exchange from Alpaca; sector is unavailable.

@@ -32,23 +32,6 @@ class FakeDataManager(DataManagerBase):
         cols = [a for a in assets if a in self._prices.columns]
         return self._prices[cols]
 
-    def get_returns(
-        self, start_date, end_date, stocks=None, outlier_return=10
-    ) -> pd.DataFrame:
-        df = self._prices[
-            (self._prices.index >= pd.Timestamp(start_date))
-            & (self._prices.index <= pd.Timestamp(end_date))
-        ]
-        if stocks:
-            available = [s for s in stocks if s in df.columns]
-            df = df[available] if available else df
-        df = df.dropna(axis=1)
-        if len(df) < 2:
-            return pd.DataFrame()
-        db_r = df.apply(quotient_diff, axis=0)
-        db_r = db_r[db_r < outlier_return].dropna(axis=0)
-        return db_r
-
     def get_metadata(self, asset: str) -> dict:
         return {**EMPTY_METADATA, "name": asset, "sector": "Unknown"}
 

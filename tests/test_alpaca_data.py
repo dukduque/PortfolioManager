@@ -114,9 +114,32 @@ def test_refresh_cache_atomic_write_leaves_no_tmp_files(tmp_path):
     assert tmp_files == []
 
 
+def test_refresh_cache_force_deletes_and_refetches(tmp_path):
+    """force=True must delete the existing cache and re-download from scratch."""
+    dm = _make_dm(tmp_path, ["AA"], DATES[:10])
+    dm.refresh_cache(["AA"], end_date=DATES[9].date())
+
+    first_call_count = dm._data_client.get_stock_bars.call_count
+
+    # Without force, a second refresh for the same end_date is a no-op.
+    dm.refresh_cache(["AA"], end_date=DATES[9].date())
+    assert dm._data_client.get_stock_bars.call_count == first_call_count
+
+    # With force=True the cache file is deleted and re-fetched.
+    dm.refresh_cache(["AA"], end_date=DATES[9].date(), force=True)
+    assert dm._data_client.get_stock_bars.call_count == first_call_count + 1
+
+
 # ---------------------------------------------------------------------------
 # get_prices
 # ---------------------------------------------------------------------------
+
+def test_get_prices_raises_when_cache_empty_and_assets_none(tmp_path):
+    """get_prices(None) must raise if no parquet files exist yet."""
+    dm = _make_dm(tmp_path, ["AA"], DATES)  # no refresh_cache called
+    with pytest.raises(RuntimeError, match="refresh_cache"):
+        dm.get_prices()
+
 
 def test_get_prices_returns_dataframe_after_refresh(tmp_path):
     dm = _make_dm(tmp_path, TICKERS, DATES)
