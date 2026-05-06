@@ -2,10 +2,13 @@
 Various scripts to view and manage an account.
 """
 
+import logging
 import math
 import database_handler as dbh
 
 import datetime as dt
+
+log = logging.getLogger(__name__)
 from database_handler import DataManager
 import pandas as pd
 import numpy as np
@@ -113,11 +116,9 @@ def piechart(account_name):
         total_position = portfolio.get_position(a) * price[a]
         marginal_position = total_position / portfolio_value
         sector = data_manager.get_metadata(a)["sector"]
-        print(
-            f"{a:5s} {sector:25s}  {total_position:7.2f} {marginal_position * 100:5.3f}%"
-        )
+        log.info("%-5s %-25s  %7.2f %5.3f%%", a, sector, total_position, marginal_position * 100)
         sectors[sector] += marginal_position
-    print(f"Porfolio value: {portfolio_value:10.2f}")
+    log.info("Portfolio value: %10.2f", portfolio_value)
 
     fig, axes = plt.subplots(ncols=1, figsize=(10, 10))
     axes.pie(
@@ -202,7 +203,7 @@ def rebalance_porfolio(
     )
     if print_portfolio:
         for o in orders:
-            print(o)
+            log.info("  %s", o)
         p = new_portfolio.copy()
         p["name"] = [
             data_manager.get_metadata(s)["name"] for s in new_portfolio.index
@@ -214,6 +215,6 @@ def rebalance_porfolio(
             data_manager.get_metadata(s)["subsector"]
             for s in new_portfolio.index
         ]
-        print(p)
-        print(cvar_stats1)
+        log.info("New portfolio:\n%s", p.to_string())
+        log.info("CVaR stats: %s", cvar_stats1)
     return orders

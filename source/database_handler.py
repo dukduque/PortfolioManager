@@ -9,6 +9,7 @@ data is yfinance.
 """
 
 import enum
+import logging
 import shutil
 import yfinance as yf
 import requests
@@ -31,6 +32,8 @@ sys.path.insert(0, parent_path)
 path_to_data = os.path.abspath(os.path.join(parent_path, "data"))
 from source import util
 from data.base import EMPTY_METADATA, quotient_diff as quotien_diff  # noqa: F401
+
+log = logging.getLogger(__name__)
 
 
 def set_data_path(new_path_to_data):
@@ -85,16 +88,14 @@ def get_market_cap(ticker_str):
     Note: We add a random sleep to avoid overloading the Yahoo Finance API.
     """
     ticker = yf.Ticker(ticker_str)
-    print(f"Getting {ticker_str} market cap...")
+    log.debug("Getting %s market cap.", ticker_str)
     try:
         # Add a random sleep to avoid overloading the Yahoo Finance API
         time.sleep(np.random.uniform(0, 500) / 1000)
         # Return the ticker and its market capitalization
         return (ticker_str, ticker.info["marketCap"])
     except Exception as e:
-        # If there is an error (e.g. the ticker is not recognized), print the error message
-        print(e)
-        # Return the ticker and a market capitalization of 0.0
+        log.warning("get_market_cap(%s) failed: %s", ticker_str, e)
         return (ticker_str, 0.0)
 
 
@@ -144,7 +145,7 @@ def load_database(db_file_name):
     try:
         return pd.read_pickle(path_to_database)
     except Exception as e:
-        print(e)
+        log.warning("Failed to read pickle %s: %s", path_to_database, e)
     return None
 
 
@@ -167,13 +168,13 @@ def save_database(BD, db_file_name):
         BD.to_pickle(path_to_database)
         return True
     except Exception as e:
-        print(e)
+        log.warning("Failed to save database to %s: %s", path_to_database, e)
     return False
 
 
 def save_metadata(metadata, metadata_file):
     path_to_database = os.path.join(path_to_data, metadata_file)
-    print(path_to_database)
+    log.debug("Saving metadata to %s", path_to_database)
     exists = os.path.isfile(path_to_database)
     if exists:
         copy_name = "copy_%s" % (metadata_file)
@@ -209,8 +210,7 @@ def create_database(stock_symbol, start=None, end=None):
         # db.rename(stock_symbol, inplace=True)
         return stock_symbol, db, True
     except Exception as e:
-        print(e)
-        print(f"Failed to get: {stock_symbol} , {start}, {end}")
+        log.warning("Failed to get %s (%s – %s): %s", stock_symbol, start, end, e)
 
     return stock_symbol, None, False
 
@@ -297,7 +297,7 @@ def update_stock_prices(stock_series, retries=3, backoff_seconds=1.0):
             stock_series.update(new_data)
             return StockUpdateStatus.OK
         except Exception as e:
-            print(f"Failed to get: {stock_series.name} in retry {i} with {e}")
+            log.warning("Failed to get %s on retry %d: %s", stock_series.name, i, e)
         sleep_time = (i + backoff_seconds) * 2 + np.random.uniform(0, 0.1)
         time.sleep(sleep_time)
     return StockUpdateStatus.FAILED
@@ -326,7 +326,8 @@ def update_database(db):
             continue
         elif download_status == StockUpdateStatus.FAILED:
             failed_updates.append(c)
-    print("Failed to update %i stocks" % len(failed_updates))
+    if failed_updates:
+        log.warning("Failed to update %d stock(s): %s", len(failed_updates), failed_updates)
     # Drop rows where all values are missing (e.g., weekends)
     db = db[db.isna().sum(axis=1) < len(db.columns)]
     # Drop columns where the last `days_back` values are missing.
@@ -347,7 +348,7 @@ def update_database_single_stock(
     if status:
         save_database(db, db_output_file)
     else:
-        print(f"Database was not updated with ticker {ticker_symbol}")
+        log.warning("Database was not updated with ticker %s.", ticker_symbol)
     return db
 
 
@@ -384,15 +385,17 @@ def run_update_process(
     db_file_in="close.pkl", db_file_out="close.pkl", n_proc=4, days_back=1
 ):
     db = load_database(db_file_in)
-    print(f"Loading db with {len(db.columns)} stocks")
+    log.info("Loaded db with %d stocks.", len(db.columns))
     db = update_database(db)
-    print(f"Updating db with {len(db.columns)} stocks")
+    log.info("Updated db with %d stocks.", len(db.columns))
     save_database(db, db_file_out)
 
 
 if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO,
+                        format="%(asctime)s %(levelname)-8s %(name)s: %(message)s")
     args = util.dh_parse_arguments()
-    print(args)
+    log.debug("CLI args: %s", args)
     if args.a == "u":
         today_ts = datetime.datetime.today()
         str_today = str(today_ts)
