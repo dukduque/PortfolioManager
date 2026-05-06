@@ -3,6 +3,7 @@ This module contains various data structures for data manipulation,
 optimization, and backtesting
 """
 import datetime as dt
+import logging
 import os
 import pandas as pd
 import numpy as np
@@ -13,6 +14,8 @@ import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 from collections import defaultdict
+
+log = logging.getLogger(__name__)
 
 project_path = Path(__file__).parent.parent
 accounts_path = project_path / 'accounts/'
@@ -381,13 +384,11 @@ def load_account(account_name):
                 try:
                     backup_file = path_to_account / backup_name
                     account = pickle.load(backup_file.open("rb"))
-                    print(
-                        f"INFO: account backup {backup_name} loaded successfully."
-                    )
+                    log.info("Account backup %s loaded successfully.", backup_name)
                     return account
                 except Exception as identifier:
-                    print(identifier)
-                    print(f"WARNING: account backup {backup_name} not loaded.")
+                    log.debug("Exception detail: %s", identifier)
+                    log.warning("Account backup %s not loaded.", backup_name)
     
     return None
 
