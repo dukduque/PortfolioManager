@@ -163,7 +163,11 @@ def build_benchmark_curve(
         pd.Series indexed by date with name benchmark_symbol.
     """
     if account.cash_flow.empty:
-        return pd.Series(dtype=float, name=benchmark_symbol)
+        raise ValueError(
+            "Cannot build benchmark curve: account has no cash flow history. "
+            "The broker may not support get_cash_flows() — check "
+            "broker.supports_cash_flow_history before calling this function."
+        )
 
     bench_prices = data_manager.get_prices(benchmark_symbol)
     if isinstance(bench_prices, pd.DataFrame):

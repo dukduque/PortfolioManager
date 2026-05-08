@@ -216,11 +216,12 @@ def test_benchmark_curve_withdrawal_reduces_spy():
     assert bench_partial.iloc[-1] < bench_full.iloc[-1]
 
 
-def test_benchmark_curve_empty_for_no_cash_flows():
+def test_benchmark_curve_raises_for_no_cash_flows():
+    """build_benchmark_curve raises ValueError when the account has no cash flow history."""
     d0 = dt.datetime(2023, 1, 2)
     account = Account("test", d0)
-    bench = build_benchmark_curve(account, SPY, _fake_dm())
-    assert bench.empty
+    with pytest.raises(ValueError, match="cash flow"):
+        build_benchmark_curve(account, SPY, _fake_dm())
 
 
 # ---------------------------------------------------------------------------

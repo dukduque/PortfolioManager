@@ -16,7 +16,7 @@ from collections import defaultdict
 from matplotlib import pyplot as plt
 from resources import (
     Portfolio,
-    load_account,
+    account_from_broker,
     generate_orders,
     build_account_history,
 )
@@ -24,18 +24,20 @@ from opt_tools import cvar_model_ortools, default_cvar_parameters
 from backtest import build_equity_curve, build_benchmark_curve
 
 
-def read_account(account_name):
-    account = load_account(account_name)
-
-
-def benchmark2(account_name, benchmark_symbol="SPY", save_figure=None):
+def benchmark(broker, data_manager, start_date, benchmark_symbol="SPY", save_figure=None):
     """Plot account equity curve vs a benchmark.
 
-    The benchmark receives the same cash flows (deposits/withdrawals) as the
-    account. save_figure: path to save the plot, or None to display it.
+    Reconstructs the account from broker history, then plots total portfolio
+    value against a benchmark that mirrors the same cash flows.
+
+    Args:
+        broker:           A BrokerHistory implementation.
+        data_manager:     Data provider with get_prices().
+        start_date:       Earliest date to pull history from.
+        benchmark_symbol: Ticker for the passive benchmark (default SPY).
+        save_figure:      File path to save the plot, or None to display it.
     """
-    account = load_account(account_name)
-    data_manager = DataManager(db_file="close.pkl")
+    account = account_from_broker(broker, "portfolio", start_date)
 
     account_curve = build_equity_curve(account, data_manager)
     bench_curve = build_benchmark_curve(account, benchmark_symbol, data_manager)
@@ -54,37 +56,14 @@ def benchmark2(account_name, benchmark_symbol="SPY", save_figure=None):
     return fig
 
 
-def benchmark(account_name, benchmark_symbol="SPY", save_figure=None):
-    """Plot account equity curve vs a benchmark.
+def piechart(broker, data_manager):
+    """Plot current portfolio allocation as a pie chart.
 
-    The benchmark receives the same cash flows (deposits/withdrawals) as the
-    account. save_figure: path to save the plot, or None to display it.
+    Args:
+        broker:       A BrokerBase implementation to fetch live positions from.
+        data_manager: Data provider with get_prices().
     """
-    account = load_account(account_name)
-    data_manager = DataManager(db_file="close.pkl")
-
-    account_curve = build_equity_curve(account, data_manager)
-    bench_curve = build_benchmark_curve(account, benchmark_symbol, data_manager)
-
-    fig, axes = plt.subplots(ncols=1, figsize=(12, 4))
-    axes.plot(account_curve.index, account_curve.values, color="blue",
-              label="Portfolio")
-    axes.plot(bench_curve.index, bench_curve.values, color="red",
-              label=benchmark_symbol)
-    axes.legend()
-
-    if save_figure:
-        fig.savefig(save_figure)
-    else:
-        plt.show()
-    return fig
-
-
-def piechart(account_name):
-    file_name = "close.pkl"
-    data_manager = DataManager(db_file=file_name)
-    account = load_account(account_name)
-    portfolio = account.portfolio
+    portfolio = broker.get_positions()
     assets = list(portfolio.assets)
     price = data_manager.get_prices(assets).iloc[
         -1

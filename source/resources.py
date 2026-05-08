@@ -4,21 +4,15 @@ optimization, and backtesting
 """
 import datetime as dt
 import logging
-import os
 import pandas as pd
 import numpy as np
 import copy
-import pickle
 import math
-import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 from collections import defaultdict
 
 log = logging.getLogger(__name__)
-
-project_path = Path(__file__).parent.parent
-accounts_path = project_path / 'accounts/'
 
 
 class Portfolio:
@@ -148,6 +142,17 @@ class Fill:
     operation_type: str
     fill_time: dt.datetime
     broker_order_id: str
+
+
+@dataclass
+class CashFlow:
+    """A deposit or withdrawal on the account.
+
+    amount is positive for deposits, negative for withdrawals.
+    """
+    date: dt.datetime
+    amount: float
+    description: str = ""
 
 
 class Account:
@@ -292,105 +297,45 @@ class Account:
         return s
 
 
-def set_account_path(new_path_to_account):
-    global accounts_path
-    accounts_path = new_path_to_account
+def account_from_broker(broker, account_name: str, start_date: dt.datetime) -> "Account":
+    """Reconstruct an Account from broker history.
 
+    Replays all fills and cash flows from the broker between start_date and
+    now to produce an Account suitable for analytics and backtesting.
 
-def create_new_account(account_name, opening_date=None):
-    '''
-    Creates a new account instance an saves it at `accounts_path/account_name`
-    '''
-    if opening_date is None:
-        opening_date = dt.datetime.now()
-    account = Account(account_name, opening_date)
-    save_account(account)
-    return account
+    If the broker does not support cash flow history (supports_cash_flow_history
+    is False), the Account's cash_flow will be empty and build_benchmark_curve
+    will not be available.
 
-
-def save_account(account):
-    backup_name = str(dt.datetime.now()).replace(".", "").replace(
-        ":", "").replace(" ", "").replace("-", "") + ".acc"
-    path_to_account = accounts_path / account.holder
-    if not path_to_account.exists():
-        path_to_account.mkdir()
-    
-    index_file = path_to_account / 'index.txt'
-    with open(index_file, "a") as writer:
-        writer.write(backup_name)
-    backup_file = path_to_account / backup_name
-    pickle.dump(account, backup_file.open("wb"), pickle.HIGHEST_PROTOCOL)
-    
-    # Save classes for future migration
-    path_portfolio_class = path_to_account / 'PortfolioClass'
-    pickle.dump(Portfolio, path_portfolio_class.open("wb"),
-                pickle.HIGHEST_PROTOCOL)
-    path_account_class = path_to_account / 'AccountClass'
-    pickle.dump(Account, path_account_class.open("wb"), pickle.HIGHEST_PROTOCOL)
-
-
-def save_account_atomic(account):
-    """Atomic variant of save_account: pickle to a temp file, then rename.
-
-    The rename is atomic on the same filesystem, so a crash mid-write never
-    leaves a corrupt .acc file referenced by index.txt.
+    Args:
+        broker:       A BrokerHistory implementation.
+        account_name: Name to assign to the reconstructed Account.
+        start_date:   Earliest date to fetch history from.
     """
-    backup_name = (
-        str(dt.datetime.now())
-        .replace(".", "").replace(":", "").replace(" ", "").replace("-", "")
-        + ".acc"
-    )
-    path_to_account = accounts_path / account.holder
-    if not path_to_account.exists():
-        path_to_account.mkdir(parents=True)
+    from broker.base import BrokerHistory
+    if not isinstance(broker, BrokerHistory):
+        raise TypeError(
+            f"{type(broker).__name__} does not implement BrokerHistory. "
+            "Cannot reconstruct account from broker."
+        )
 
-    backup_file = path_to_account / backup_name
-    fd, tmp_path = tempfile.mkstemp(dir=path_to_account, suffix=".acc.tmp")
-    try:
-        with os.fdopen(fd, "wb") as f:
-            pickle.dump(account, f, pickle.HIGHEST_PROTOCOL)
-        os.replace(tmp_path, backup_file)  # atomic on same filesystem
-    except Exception:
-        try:
-            os.unlink(tmp_path)
-        except OSError:
-            pass
-        raise
+    now = dt.datetime.now(dt.timezone.utc)
+    account = Account(account_name, start_date)
 
-    index_file = path_to_account / "index.txt"
-    with open(index_file, "a") as writer:
-        writer.write(backup_name)
+    if broker.supports_cash_flow_history:
+        cash_flows = broker.get_cash_flows(start_date, now)
+        for cf in sorted(cash_flows, key=lambda x: x.date):
+            if cf.amount >= 0:
+                account.deposit(cf.date, cf.amount)
+            else:
+                account.withdraw(cf.date, abs(cf.amount))
 
-    pickle.dump(Portfolio, (path_to_account / "PortfolioClass").open("wb"),
-                pickle.HIGHEST_PROTOCOL)
-    pickle.dump(Account, (path_to_account / "AccountClass").open("wb"),
-                pickle.HIGHEST_PROTOCOL)
+    fills = broker.get_order_history(start_date, now)
+    if fills:
+        fills_sorted = sorted(fills, key=lambda f: f.fill_time)
+        account.update_account_from_fills(fills_sorted[-1].fill_time, fills_sorted)
 
-
-def load_account(account_name):
-    path_to_account = accounts_path / account_name
-    path_portfolio_class = path_to_account / 'PortfolioClass'
-    path_account_class = path_to_account / 'AccountClass'
-    if not path_to_account.exists():
-        return None
-    
-    with open(path_to_account / "index.txt") as index_file:
-        hist = index_file.read()
-        hist_list = hist.split(".acc")
-        hist_list.reverse()
-        for acc_backup in hist_list:
-            if len(acc_backup) > 0:
-                backup_name = acc_backup + ".acc"
-                try:
-                    backup_file = path_to_account / backup_name
-                    account = pickle.load(backup_file.open("rb"))
-                    log.info("Account backup %s loaded successfully.", backup_name)
-                    return account
-                except Exception as identifier:
-                    log.debug("Exception detail: %s", identifier)
-                    log.warning("Account backup %s not loaded.", backup_name)
-    
-    return None
+    return account
 
 
 def generate_orders(old_portfolio, new_portfolio, prices):

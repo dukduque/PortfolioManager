@@ -199,7 +199,7 @@ class AlpacaDataManager(DataManagerBase):
         # One bulk call from the earliest needed start date.
         bulk_start = min(fetch_start.values())
         log.info(
-            "Fetching %d ticker(s) from Alpaca: %s → %s",
+            "Fetching %d ticker(s) from Alpaca: %s to %s",
             len(fetch_start), bulk_start, end_date,
         )
 
@@ -230,7 +230,7 @@ class AlpacaDataManager(DataManagerBase):
                 raw.loc[ticker][["close"]]
                 .rename_axis("timestamp")
             )
-            new_rows.index = pd.DatetimeIndex(new_rows.index).normalize()
+            new_rows.index = pd.DatetimeIndex(new_rows.index).normalize().tz_localize(None)
 
             # Drop rows earlier than the ticker's personal fetch start.
             ticker_start = pd.Timestamp(fetch_start[ticker])
@@ -238,6 +238,8 @@ class AlpacaDataManager(DataManagerBase):
 
             cached = self._read_cache(ticker)
             if cached is not None and not cached.empty:
+                if cached.index.tz is not None:
+                    cached.index = cached.index.tz_localize(None)
                 new_rows = new_rows[new_rows.index > cached.index[-1]]
                 combined = pd.concat([cached, new_rows]).sort_index()
             else:

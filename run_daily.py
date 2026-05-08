@@ -4,11 +4,10 @@ Run this script once a day (e.g. via cron or systemd timer at 10:00 ET).
 It will:
   1. Exit cleanly if today is not a NYSE trading day.
   2. Exit cleanly if the job already succeeded today (idempotency).
-  3. Load the account from disk.
+  3. Fetch current portfolio and cash from the broker.
   4. Run the CVaR optimizer to produce rebalancing orders.
   5. Submit orders to the configured broker (paper or live Alpaca).
-  6. Record fills and save the account atomically.
-  7. Write an audit log entry for every order and fill.
+  6. Write an audit log entry for every order and fill.
 
 Configuration is read from environment variables (see .env.example).
 For local development, copy .env.example → .env and fill in values;
@@ -136,13 +135,13 @@ def main() -> int:
     today = dt.date.today()
     log.info("=== Daily job starting — %s ===", today.isoformat())
 
-    # ── 1. NYSE trading-day check ──────────────────────────────────────────
+    # -- 1. NYSE trading-day check -------------------------------------------
     from market_hours import is_trading_day, IdempotencyGuard
     if not is_trading_day(today):
         log.info("Today (%s) is not a NYSE trading day. Exiting.", today.isoformat())
         return 0
 
-    # ── 2. Idempotency guard ───────────────────────────────────────────────
+    # -- 2. Idempotency guard -------------------------------------------------
     run_dir = Path(_env("RUN_STATE_DIR", "run_state"))
     guard = IdempotencyGuard(run_dir)
 
@@ -165,45 +164,43 @@ def main() -> int:
 
 
 def _run(log, audit, today: dt.date) -> int:
-    from resources import (
-        load_account, save_account_atomic, set_account_path,
-        Portfolio, generate_orders, OPERATION_BUY, OPERATION_SELL,
-    )
     from account_manager import rebalance_porfolio
     from market_hours import IdempotencyGuard
 
-    # ── Config ─────────────────────────────────────────────────────────────
-    account_name   = _env("ACCOUNT_NAME", "my_portfolio")
-    account_dir    = Path(_env("ACCOUNT_PATH", "accounts"))
+    # -- Config ---------------------------------------------------------------
     lookback_days  = _env_int("LOOKBACK_DAYS", 252)
     benchmark      = _env("BENCHMARK_SYMBOL", "SPY")
     fractional     = _env_bool("FRACTIONAL_SHARES", True)
-    data_file      = _env("DATA_FILE", "data/close.pkl")
-    meta_file      = _env("METADATA_FILE", "data/metadata.pkl")
     paper_mode     = _env_bool("ALPACA_PAPER", True)
     api_key        = _env("ALPACA_API_KEY")
     secret_key     = _env("ALPACA_SECRET_KEY")
     data_source    = _env("DATA_SOURCE", "local")
+    data_file      = _env("DATA_FILE", "data/close.pkl")
+    meta_file      = _env("METADATA_FILE", "data/metadata.pkl")
     cache_dir      = _env("DATA_CACHE_DIR", "data/cache/alpaca")
     run_dir        = Path(_env("RUN_STATE_DIR", "run_state"))
+    budget         = _env_float("REBALANCE_BUDGET", 0.0)
 
-    set_account_path(account_dir)
+    # -- 3. Build broker ------------------------------------------------------
+    broker = _build_broker(api_key, secret_key, paper_mode, log)
 
-    # ── 3. Load account ────────────────────────────────────────────────────
-    account = load_account(account_name)
-    if account is None:
-        log.error(
-            "Account '%s' not found under '%s'. "
-            "Create it first with resources.create_new_account().",
-            account_name, account_dir,
-        )
-        return 1
+    # -- 4. Fetch live portfolio and cash from broker -------------------------
+    portfolio = broker.get_positions()
+    cash = broker.get_cash()
     log.info(
-        "Loaded account '%s': cash=%.2f, positions=%s",
-        account_name, account.cash_onhand, list(account.portfolio.assets),
+        "Broker state: cash=%.2f, positions=%s",
+        cash, list(portfolio.assets),
     )
 
-    # ── 4. Data manager ────────────────────────────────────────────────────
+    # Cap budget to available cash; if REBALANCE_BUDGET is 0 use all cash.
+    deploy = min(budget, cash) if budget > 0 else cash
+    if deploy <= 0:
+        log.info("No cash available to deploy. Exiting.")
+        _mark_success(run_dir, today, log)
+        return 0
+    log.info("Deploying up to $%.2f this rebalance.", deploy)
+
+    # -- 5. Data manager ------------------------------------------------------
     try:
         if data_source == "alpaca":
             from data.alpaca import AlpacaDataManager
@@ -212,8 +209,7 @@ def _run(log, audit, today: dt.date) -> int:
                 secret_key=secret_key,
                 cache_dir=Path(cache_dir),
             )
-            # Refresh cache before optimising — only fetches the missing tail.
-            account_tickers = list(account.portfolio.assets) + [benchmark]
+            account_tickers = list(portfolio.assets) + [benchmark]
             data_manager.refresh_cache(account_tickers)
         else:
             from data.local import LocalDataManager
@@ -225,14 +221,14 @@ def _run(log, audit, today: dt.date) -> int:
         log.error("Failed to initialise data manager (%s): %s", data_source, exc)
         return 1
 
-    # ── 5. Generate orders via CVaR optimizer ──────────────────────────────
-    end_date   = dt.datetime.combine(today, dt.time(16, 0))  # market close
+    # -- 6. Generate orders via CVaR optimizer --------------------------------
+    end_date   = dt.datetime.combine(today, dt.time(16, 0))
     start_date = end_date - dt.timedelta(days=lookback_days)
 
     try:
         orders = rebalance_porfolio(
-            portfolio=account.portfolio,
-            additional_cash=account.cash_onhand,
+            portfolio=portfolio,
+            additional_cash=deploy,
             start_date=start_date,
             end_date=end_date,
             data_manager=data_manager,
@@ -245,59 +241,42 @@ def _run(log, audit, today: dt.date) -> int:
 
     if not orders:
         log.info("Optimizer produced no orders — portfolio already optimal.")
-        _mark_and_save(account, run_dir, today, log)
+        _mark_success(run_dir, today, log)
         return 0
 
     log.info("Optimizer produced %d orders.", len(orders))
     for o in orders:
         log.info("  ORDER  %s %s x%.4f @ %.4f", o.operation_type, o.ticker, o.qty, o.price)
-        audit.info("ORDER  account=%s date=%s side=%s ticker=%s qty=%.4f price=%.4f",
-                   account.holder, today.isoformat(), o.operation_type,
-                   o.ticker, o.qty, o.price)
+        audit.info("ORDER  date=%s side=%s ticker=%s qty=%.4f price=%.4f",
+                   today.isoformat(), o.operation_type, o.ticker, o.qty, o.price)
 
-    # ── 6. Broker ──────────────────────────────────────────────────────────
-    broker = _build_broker(api_key, secret_key, paper_mode, account.portfolio, log)
-
-    # ── 7. Submit orders + collect fills ──────────────────────────────────
-    fills = []
+    # -- 7. Submit orders + collect fills -------------------------------------
     for order in orders:
         try:
             fill = _submit_with_retry(broker, order, log)
             if fill is None:
                 log.warning("No fill received for %s %s — skipping.", order.operation_type, order.ticker)
                 continue
-            fills.append(fill)
             log.info(
                 "  FILL   %s %s x%.4f @ %.4f (broker_id=%s)",
                 fill.operation_type, fill.ticker, fill.qty,
                 fill.fill_price, fill.broker_order_id,
             )
             audit.info(
-                "FILL   account=%s date=%s side=%s ticker=%s qty=%.4f "
-                "fill_price=%.4f broker_id=%s",
-                account.holder, today.isoformat(), fill.operation_type,
-                fill.ticker, fill.qty, fill.fill_price, fill.broker_order_id,
+                "FILL   date=%s side=%s ticker=%s qty=%.4f fill_price=%.4f broker_id=%s",
+                today.isoformat(), fill.operation_type, fill.ticker,
+                fill.qty, fill.fill_price, fill.broker_order_id,
             )
         except Exception as exc:
             log.error("Order %s %s failed after retries: %s", order.operation_type, order.ticker, exc)
-            audit.error("ORDER_FAILED account=%s date=%s side=%s ticker=%s error=%s",
-                        account.holder, today.isoformat(), order.operation_type, order.ticker, exc)
+            audit.error("ORDER_FAILED date=%s side=%s ticker=%s error=%s",
+                        today.isoformat(), order.operation_type, order.ticker, exc)
 
-    # ── 8. Update account + atomic save ───────────────────────────────────
-    if fills:
-        account.update_account_from_fills(
-            dt.datetime.combine(today, dt.time(10, 0)), fills
-        )
-        log.info(
-            "Account updated: cash=%.2f, positions=%s",
-            account.cash_onhand, list(account.portfolio.assets),
-        )
-
-    _mark_and_save(account, run_dir, today, log)
+    _mark_success(run_dir, today, log)
     return 0
 
 
-def _build_broker(api_key, secret_key, paper_mode, current_portfolio, log):
+def _build_broker(api_key, secret_key, paper_mode, log):
     """Return an AlpacaBroker if credentials are configured, else PaperBroker."""
     if api_key and secret_key:
         try:
@@ -311,14 +290,11 @@ def _build_broker(api_key, secret_key, paper_mode, current_portfolio, log):
 
     from broker.paper import CostAwarePaperBroker
     log.warning("No Alpaca credentials found — using local CostAwarePaperBroker (no real trades).")
-    return CostAwarePaperBroker(cost_bps=5.0, initial_portfolio=current_portfolio)
+    return CostAwarePaperBroker(cost_bps=5.0)
 
 
-def _mark_and_save(account, run_dir, today, log):
-    from resources import save_account_atomic
+def _mark_success(run_dir, today, log):
     from market_hours import IdempotencyGuard
-    save_account_atomic(account)
-    log.info("Account saved atomically.")
     IdempotencyGuard(run_dir).mark_success(today)
     log.info("Success marker written for %s.", today.isoformat())
 

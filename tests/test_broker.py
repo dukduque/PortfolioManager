@@ -12,7 +12,8 @@ from resources import (
     OPERATION_BUY,
     OPERATION_SELL,
 )
-from broker.paper import PaperBroker
+from broker.base import BrokerHistory
+from broker.paper import CostAwarePaperBroker, PaperBroker
 
 
 # ---------------------------------------------------------------------------
@@ -186,3 +187,198 @@ def test_fill_dataclass_fields():
     assert fill.fill_price == 200.0
     assert fill.operation_type == OPERATION_BUY
     assert fill.broker_order_id == 'abc-123'
+
+
+# ---------------------------------------------------------------------------
+# PaperBroker — cash tracking
+# ---------------------------------------------------------------------------
+
+def test_paper_broker_default_cash_is_zero():
+    assert PaperBroker().get_cash() == 0.0
+
+
+def test_paper_broker_initial_cash():
+    assert PaperBroker(initial_cash=5_000.0).get_cash() == pytest.approx(5_000.0)
+
+
+def test_paper_broker_buy_reduces_cash():
+    broker = PaperBroker(initial_cash=10_000.0)
+    broker.submit_order(Order('AAPL', 10, 100.0, OPERATION_BUY))
+    assert broker.get_cash() == pytest.approx(10_000.0 - 10 * 100.0)
+
+
+def test_paper_broker_sell_increases_cash():
+    initial = Portfolio.create_from_vectors(['AAPL'], [10])
+    broker = PaperBroker(initial_portfolio=initial, initial_cash=0.0)
+    broker.submit_order(Order('AAPL', 5, 120.0, OPERATION_SELL))
+    assert broker.get_cash() == pytest.approx(5 * 120.0)
+
+
+# ---------------------------------------------------------------------------
+# PaperBroker — deposit and withdraw
+# ---------------------------------------------------------------------------
+
+def test_paper_broker_deposit_increases_cash():
+    broker = PaperBroker()
+    broker.deposit(1_000.0)
+    assert broker.get_cash() == pytest.approx(1_000.0)
+
+
+def test_paper_broker_deposit_with_explicit_date():
+    date = dt.datetime(2024, 6, 1, tzinfo=dt.timezone.utc)
+    broker = PaperBroker()
+    broker.deposit(2_500.0, date=date)
+    assert broker.get_cash() == pytest.approx(2_500.0)
+
+
+def test_paper_broker_withdraw_decreases_cash():
+    broker = PaperBroker(initial_cash=5_000.0)
+    broker.withdraw(1_000.0)
+    assert broker.get_cash() == pytest.approx(4_000.0)
+
+
+def test_paper_broker_withdraw_allows_negative_cash():
+    """PaperBroker does not enforce a cash floor — intentional for simulation."""
+    broker = PaperBroker(initial_cash=0.0)
+    broker.withdraw(500.0)
+    assert broker.get_cash() == pytest.approx(-500.0)
+
+
+# ---------------------------------------------------------------------------
+# PaperBroker — BrokerHistory: order history
+# ---------------------------------------------------------------------------
+
+def test_paper_broker_supports_cash_flow_history():
+    assert PaperBroker().supports_cash_flow_history is True
+
+
+def test_paper_broker_get_order_history_empty():
+    broker = PaperBroker()
+    start = dt.datetime(2024, 1, 1, tzinfo=dt.timezone.utc)
+    end   = dt.datetime(2024, 12, 31, tzinfo=dt.timezone.utc)
+    assert broker.get_order_history(start, end) == []
+
+
+def test_paper_broker_get_order_history_after_buy():
+    start = dt.datetime(2020, 1, 1, tzinfo=dt.timezone.utc)
+    end   = dt.datetime(2099, 12, 31, tzinfo=dt.timezone.utc)
+    broker = PaperBroker(initial_cash=10_000.0)
+    broker.submit_order(Order('AAPL', 5, 100.0, OPERATION_BUY))
+    history = broker.get_order_history(start, end)
+    assert len(history) == 1
+    assert history[0].ticker == 'AAPL'
+    assert history[0].qty == 5
+    assert history[0].operation_type == OPERATION_BUY
+
+
+def test_paper_broker_get_order_history_date_filter():
+    broker = PaperBroker()
+    t_before = dt.datetime(2024, 1,  1, tzinfo=dt.timezone.utc)
+    t_inside = dt.datetime(2024, 3, 15, tzinfo=dt.timezone.utc)
+    t_after  = dt.datetime(2024, 6,  1, tzinfo=dt.timezone.utc)
+    start    = dt.datetime(2024, 2,  1, tzinfo=dt.timezone.utc)
+    end      = dt.datetime(2024, 5,  1, tzinfo=dt.timezone.utc)
+    broker._fill_history = [
+        Fill('A', 1, 100.0, OPERATION_BUY,  t_before, 'id1'),
+        Fill('B', 1, 100.0, OPERATION_BUY,  t_inside, 'id2'),
+        Fill('C', 1, 100.0, OPERATION_SELL, t_after,  'id3'),
+    ]
+    result = broker.get_order_history(start, end)
+    assert len(result) == 1
+    assert result[0].ticker == 'B'
+
+
+def test_paper_broker_multiple_orders_all_in_history():
+    start = dt.datetime(2020, 1, 1, tzinfo=dt.timezone.utc)
+    end   = dt.datetime(2099, 12, 31, tzinfo=dt.timezone.utc)
+    initial = Portfolio.create_from_vectors(['AAPL'], [20])
+    broker = PaperBroker(initial_portfolio=initial, initial_cash=10_000.0)
+    broker.submit_order(Order('AAPL', 5, 100.0, OPERATION_BUY))
+    broker.submit_order(Order('AAPL', 3, 110.0, OPERATION_SELL))
+    history = broker.get_order_history(start, end)
+    assert len(history) == 2
+
+
+# ---------------------------------------------------------------------------
+# PaperBroker — BrokerHistory: cash flow history
+# ---------------------------------------------------------------------------
+
+def test_paper_broker_get_cash_flows_empty():
+    broker = PaperBroker()
+    start = dt.datetime(2024, 1, 1, tzinfo=dt.timezone.utc)
+    end   = dt.datetime(2024, 12, 31, tzinfo=dt.timezone.utc)
+    assert broker.get_cash_flows(start, end) == []
+
+
+def test_paper_broker_get_cash_flows_deposit():
+    date  = dt.datetime(2024, 3, 1, tzinfo=dt.timezone.utc)
+    start = dt.datetime(2024, 1, 1, tzinfo=dt.timezone.utc)
+    end   = dt.datetime(2024, 12, 31, tzinfo=dt.timezone.utc)
+    broker = PaperBroker()
+    broker.deposit(5_000.0, date=date)
+    flows = broker.get_cash_flows(start, end)
+    assert len(flows) == 1
+    assert flows[0].amount == pytest.approx(5_000.0)
+    assert flows[0].description == 'deposit'
+
+
+def test_paper_broker_get_cash_flows_withdrawal():
+    date  = dt.datetime(2024, 3, 1, tzinfo=dt.timezone.utc)
+    start = dt.datetime(2024, 1, 1, tzinfo=dt.timezone.utc)
+    end   = dt.datetime(2024, 12, 31, tzinfo=dt.timezone.utc)
+    broker = PaperBroker(initial_cash=5_000.0)
+    broker.withdraw(1_000.0, date=date)
+    flows = broker.get_cash_flows(start, end)
+    assert len(flows) == 1
+    assert flows[0].amount == pytest.approx(-1_000.0)
+    assert flows[0].description == 'withdrawal'
+
+
+def test_paper_broker_get_cash_flows_date_filter():
+    start = dt.datetime(2024, 2, 1, tzinfo=dt.timezone.utc)
+    end   = dt.datetime(2024, 5, 1, tzinfo=dt.timezone.utc)
+    broker = PaperBroker()
+    broker.deposit(1_000.0, date=dt.datetime(2024, 1, 1, tzinfo=dt.timezone.utc))  # before range
+    broker.deposit(2_000.0, date=dt.datetime(2024, 3, 1, tzinfo=dt.timezone.utc))  # in range
+    broker.deposit(3_000.0, date=dt.datetime(2024, 6, 1, tzinfo=dt.timezone.utc))  # after range
+    flows = broker.get_cash_flows(start, end)
+    assert len(flows) == 1
+    assert flows[0].amount == pytest.approx(2_000.0)
+
+
+# ---------------------------------------------------------------------------
+# CostAwarePaperBroker — cash tracking with spread
+# ---------------------------------------------------------------------------
+
+def test_cost_aware_buy_reduces_cash_by_adjusted_price():
+    broker = CostAwarePaperBroker(cost_bps=10.0, initial_cash=10_000.0)
+    broker.submit_order(Order('AA', 10, 100.0, OPERATION_BUY))
+    expected = 10_000.0 - 10 * 100.0 * (1 + 10 / 10_000)
+    assert broker.get_cash() == pytest.approx(expected)
+
+
+def test_cost_aware_sell_increases_cash_by_adjusted_price():
+    initial = Portfolio.create_from_vectors(['AA'], [20])
+    broker = CostAwarePaperBroker(cost_bps=10.0, initial_portfolio=initial, initial_cash=0.0)
+    broker.submit_order(Order('AA', 10, 100.0, OPERATION_SELL))
+    expected = 10 * 100.0 * (1 - 10 / 10_000)
+    assert broker.get_cash() == pytest.approx(expected)
+
+
+# ---------------------------------------------------------------------------
+# BrokerHistory base — NotImplementedError for cash flows
+# ---------------------------------------------------------------------------
+
+def test_broker_history_base_get_cash_flows_raises():
+    """BrokerHistory.get_cash_flows() raises NotImplementedError by default."""
+    class _MinimalBroker(BrokerHistory):
+        def get_order_history(self, start, end):
+            return []
+
+    broker = _MinimalBroker()
+    assert broker.supports_cash_flow_history is False
+    with pytest.raises(NotImplementedError):
+        broker.get_cash_flows(
+            dt.datetime(2024, 1, 1),
+            dt.datetime(2024, 12, 31),
+        )
