@@ -19,6 +19,7 @@
 
 #Enviroment files
 *.env
+*.env.example
 
 #Account files
 *.acc
