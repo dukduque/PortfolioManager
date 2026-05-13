@@ -17,9 +17,10 @@
 #Pickle files
 *.pkl 
 
-#Enviroment files
+# Environment files — .env holds secrets and must never be committed.
+# .env.example is the safe template and IS committed.
+.env
 *.env
-*.env.example
 
 #Account files
 *.acc
@@ -36,3 +37,19 @@ logs/
 
 # Account data directories
 accounts/
+
+# Price cache and S&P 500 ticker cache
+data/cache/
+data/sp500tickers.pickle
+
+# Claude Code internal directory
+.claude/
+
+# Local dev and planning files — not part of the production codebase
+sweep_cvar.py
+test_rebalance.py
+test_alpaca_buy.py
+test_alpaca_buy_copy.py
+ROADMAP.md
+TAXOPT.md
+DEPLOYMENT_PLAN.md
