@@ -62,30 +62,30 @@ Edit `.env` with your values:
 
 ### 3. PYTHONPATH
 
-`run_daily.py`, `test_rebalance.py`, and `sweep_cvar.py` all prepend `source/` to `sys.path` at startup, so **no manual configuration is needed** when running those scripts directly.
+`run_daily.py` prepends `source/` to `sys.path` at startup, so **no manual configuration is needed** when running it directly.
 
-If you import project modules from outside those scripts (e.g. a REPL, a notebook, or an IDE run configuration), set `PYTHONPATH` for your platform:
+If you import project modules from outside that script (e.g. a REPL, a notebook, or an IDE run configuration), add `source/` to `PYTHONPATH`. The commands below **append** to any existing value so nothing already on the path is lost.
 
 **macOS / Linux**
 ```shell
-export PYTHONPATH=/path/to/PortfolioManager/source
+export PYTHONPATH="${PYTHONPATH:+$PYTHONPATH:}/path/to/PortfolioManager/source"
 # Add to ~/.zshrc or ~/.bashrc to make it permanent
 ```
 
 **Windows — Command Prompt**
 ```cmd
-set PYTHONPATH=C:\path\to\PortfolioManager\source
+set PYTHONPATH=%PYTHONPATH%;C:\path\to\PortfolioManager\source
 ```
 
 **Windows — PowerShell**
 ```powershell
-$env:PYTHONPATH = "C:\path\to\PortfolioManager\source"
+$env:PYTHONPATH = ($env:PYTHONPATH, "C:\path\to\PortfolioManager\source" | Where-Object { $_ }) -join ";"
 # Add to $PROFILE to make it permanent
 ```
 
 **Windows — permanent (System Environment Variables)**
 
-Open *Settings → System → About → Advanced system settings → Environment Variables*, add a User variable `PYTHONPATH` with value `C:\path\to\PortfolioManager\source`.
+Open *Settings → System → About → Advanced system settings → Environment Variables*. If `PYTHONPATH` already exists, **edit** it and append `;C:\path\to\PortfolioManager\source` to the existing value. If it does not exist, create a new User variable named `PYTHONPATH` with value `C:\path\to\PortfolioManager\source`.
 
 ---
 
@@ -114,14 +114,6 @@ python run_daily.py
 ```
 
 Exits cleanly if today is not a NYSE trading day or if the job already ran successfully today. Designed to be called by a scheduler (see [Deployment](#deployment) below).
-
-### Parameter sensitivity sweep
-
-```shell
-python sweep_cvar.py --budget 10000 --max-weight 0.25
-```
-
-Runs the optimizer across a grid of CVaR α and β values and prints a table of expected return, CVaR, VaR, and portfolio composition for each combination. Always a dry run — no orders are submitted.
 
 ---
 
@@ -158,39 +150,168 @@ The broker layer is split into two abstract base classes:
 
 ### CVaR optimizer
 
-The optimizer solves a mean-CVaR mixed-integer programme at every rebalance:
+The optimizer solves a mean-CVaR mixed-integer programme (Rockafellar & Uryasev, 2000) at every rebalance. The inputs are *n* historical return scenarios for *m* assets.
+
+**Notation**
+
+| Symbol | Meaning |
+|---|---|
+| n, m | number of historical scenarios; number of assets |
+| r_{ij} | gross return (price ratio) of asset j in scenario i: r_{ij} = price_{j,t+1} / price_{j,t} |
+| r̄_j | sample mean gross return of asset j across all scenarios |
+| p_j | current price of asset j |
+| B | total budget = current portfolio equity (mark-to-market) + available cash |
+| x_j ≥ 0 | **decision variable** — shares held in asset j |
+| cash ≥ 0 | **decision variable** — uninvested cash (earns zero return) |
+| η | **decision variable** — Value at Risk threshold (the α-quantile of the loss distribution) |
+| z_i ≥ 0 | **decision variable** — per-scenario shortfall above η (CVaR auxiliary variable) |
+| α | CVaR confidence level — the CVaR covers the worst (1−α) fraction of scenarios |
+| β | convex weight on expected return vs CVaR in the objective |
+
+**Portfolio return and loss**
+
+The portfolio gross return in scenario i is the dollar-weighted average return:
 
 ```
-max  β · E[return]  −  (1−β) · CVaR_α(loss)
-
-s.t. Σ p_j x_j + cash = B          (budget)
-     p_j x_j / B ≤ max_weight       (position cap — breaks LP corner solutions)
-     x_j ≥ 0                        (no short selling)
+ρ_i = ( Σ_j r_{ij} · p_j · x_j  +  cash ) / B
 ```
+
+The gross loss is simply the negative of this: L_i = −ρ_i.
+
+**Programme**
+
+CVaR is linearised via the Rockafellar–Uryasev auxiliary variable z_i ≥ (L_i − η)⁺:
+
+```
+max   β · Σ_j r̄_j · p_j · x_j / B
+    − (1−β) · [ η + 1/(n·(1−α)) · Σ_i z_i ]
+
+s.t.  Σ_j p_j · x_j + cash = B                          (budget)
+      z_i ≥ −Σ_j r_{ij} · p_j · x_j / B − cash/B − η   (CVaR linearisation, ∀i)
+      z_i ≥ 0                                            (∀i)
+      p_j · x_j / B ≤ max_weight                         (position cap)
+      x_j ≥ 0, cash ≥ 0                                  (no short selling)
+```
+
+The position cap `p_j · x_j / B ≤ max_weight` is the most important practical lever: without it, the linear objective always selects a corner solution that concentrates the entire budget in a single asset.
+
+**Parameters**
 
 | Parameter | Default | Description |
 |---|---|---|
-| α | 0.90 | CVaR confidence level — covers worst (1−α) fraction of scenarios |
-| β | 0.95 | Return weight — 0 = pure risk minimisation, 1 = pure return maximisation |
-| `MAX_WEIGHT` | 1.0 | Per-asset cap — set to e.g. 0.05 for equal-weight-style diversification |
+| α | 0.90 | CVaR confidence level — e.g. 0.90 means the CVaR covers the worst 10 % of scenarios |
+| β | 0.95 | Return weight — 0 = minimise CVaR only, 1 = maximise expected return only |
+| `MAX_WEIGHT` | 1.0 | Per-asset cap as a fraction of B — e.g. 0.05 forces at least 20 positions |
 
 ---
 
 ## Deployment
 
-### Option 1 — Local machine (cron)
+### Option 1 — Local machine
 
-Run the job locally on any machine that is on during market hours. Add a crontab entry to fire at 10:00 ET (15:00 UTC) on weekdays:
+Run the job on any machine that is on and connected to the internet at 10:00 ET on weekdays. The machine does not need to stay on all day — only during the rebalance window.
+
+**Prerequisites**
+- `.env` configured in the project root
+- Python and dependencies installed (`pip install -r requirements.txt`)
+- You know the exact path to your Python executable (see below for how to find it)
+
+#### macOS and Linux
+
+**What is cron?** `cron` is the built-in Unix/macOS job scheduler. It runs commands on a schedule defined in a file called the crontab.
+
+**Is cron installed?** On macOS it is always available. On Linux it depends on the distribution — check with:
+
+```shell
+# Debian / Ubuntu
+systemctl status cron
+
+# RHEL / Fedora / CentOS
+systemctl status crond
+```
+
+If the service is not found, install it:
+
+```shell
+# Debian / Ubuntu
+sudo apt-get install cron && sudo systemctl enable --now cron
+
+# RHEL / Fedora
+sudo dnf install cronie && sudo systemctl enable --now crond
+```
+
+**Find your Python path** — the correct path varies by installation method:
+
+```shell
+# System Python or pyenv
+which python3
+
+# Inside a virtual environment (activate it first)
+source /path/to/venv/bin/activate && which python
+```
+
+**Add the cron entry:**
 
 ```shell
 crontab -e
 ```
 
+Add this line, replacing the paths with your own:
+
 ```cron
-0 15 * * 1-5 cd /path/to/PortfolioManager && /usr/bin/python run_daily.py >> logs/cron.log 2>&1
+0 15 * * 1-5 cd /path/to/PortfolioManager && /path/to/python run_daily.py >> logs/cron.log 2>&1
 ```
 
+- `0 15 * * 1-5` — fire at 15:00 UTC (10:00 ET) Monday through Friday
+- `>> logs/cron.log` — append stdout to a log file; create `logs/` first if it does not exist
+- `2>&1` — redirect stderr into the same log file so errors are captured
+
+The `cd` is required because `run_daily.py` resolves all paths (`.env`, cache, logs) relative to its working directory.
+
+> **Note:** cron runs with a minimal environment — no shell profile, no conda/pyenv shims. Always use the absolute path to the Python executable, not `python` or `python3`.
+
 The job exits immediately on non-trading days, so the cron schedule does not need to know about NYSE holidays.
+
+#### Windows
+
+Windows does not have cron. The equivalent is **Task Scheduler**, which is built into every version of Windows.
+
+**Find your Python path:**
+
+```powershell
+(Get-Command python).Source
+```
+
+If you are using a virtual environment, activate it first, then run the command above.
+
+**Create the scheduled task:**
+
+1. Open **Task Scheduler** (search for it in the Start menu).
+2. In the right-hand panel click **Create Task** (not "Create Basic Task" — Basic Task does not let you set the timezone or weekday filter precisely).
+3. **General tab:**
+   - Name: `PortfolioManager daily rebalance`
+   - Select *Run only when user is logged on* (simplest) or *Run whether user is logged on or not* (runs even with the screen locked, but requires your Windows password).
+   - Check *Run with highest privileges* if your Python installation requires it.
+4. **Triggers tab → New:**
+   - Begin the task: *On a schedule*
+   - Settings: *Weekly*, repeat every 1 week, check Mon–Fri
+   - Start: set the time to **10:00 AM** and make sure the timezone shown matches Eastern Time. If your machine is set to a different timezone, convert accordingly (e.g. 9:00 AM Central, 7:00 AM Pacific).
+   - Check *Enabled*.
+5. **Actions tab → New:**
+   - Action: *Start a program*
+   - Program/script: full path to `python.exe`, e.g. `C:\Users\YourName\AppData\Local\Programs\Python\Python312\python.exe`
+   - Add arguments: `run_daily.py`
+   - Start in: full path to the project root, e.g. `C:\Users\YourName\PortfolioManager`
+6. **Conditions tab:**
+   - Uncheck *Stop if the computer switches to battery power* if you are on a laptop and want it to run on battery.
+   - If you want the machine to wake from sleep to run the job, check *Wake the computer to run this task* — note this requires the machine to be in sleep (not hibernation or shut down).
+7. **Settings tab:**
+   - Check *Run task as soon as possible after a scheduled start is missed* — this handles the case where the machine was off or asleep at trigger time.
+8. Click **OK**.
+
+**Verify it works** by right-clicking the task and selecting *Run*. Check `logs\portfolio.log` and `logs\audit.log` to confirm the job executed.
+
+> **Tip:** if the task silently does nothing, open **Event Viewer → Windows Logs → Application** and filter by source `PortfolioManager` or look for errors around the trigger time. A common cause is an incorrect *Start in* path — without it Python cannot find `run_daily.py` or `.env`.
 
 ### Option 2 — VPS with systemd (recommended)
 
@@ -285,6 +406,3 @@ Schedule with cron on the host (fires Mon–Fri at 10:00 ET):
 
 ---
 
-## Roadmap
-
-See [ROADMAP.md](ROADMAP.md) for planned features including a web configuration panel, analytics dashboard, multi-broker support, and alerting.

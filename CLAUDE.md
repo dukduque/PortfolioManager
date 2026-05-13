@@ -1,18 +1,11 @@
 # PortfolioManager — Developer Notes
 
-Full user-facing documentation is in [readme.md](readme.md). This file covers
-what Claude needs to know to work effectively in this codebase.
+User-facing documentation (setup, usage, deployment) is in [readme.md](readme.md).
+This file contains only what is useful for editing the code.
 
 ---
 
-## What this does
-
-Daily portfolio rebalancing via a mean-CVaR optimizer (OR-Tools CBC) connected
-to the Alpaca Trading API. See [readme.md § How it works](readme.md#how-it-works).
-
----
-
-## Layout
+## File layout
 
 ```
 run_daily.py               Entry point: guards → broker → data → optimize → orders
@@ -40,54 +33,49 @@ tests/                     pytest suite
 
 ## Configuration
 
-All settings live in `.env` (copied from `.env.example`; never committed).
-See [readme.md § Configure environment](readme.md#2-configure-environment) for
-the full variable reference.
+All settings live in `.env` (never committed). Full variable reference is in
+[readme.md § Configure environment](readme.md#2-configure-environment).
 
-Key variables Claude should be aware of when editing code:
+Variables with non-obvious effects on the code:
 
 | Variable | Default | Notes |
 |---|---|---|
-| `ALPACA_API_KEY` / `ALPACA_SECRET_KEY` | | Blank = fall back to `CostAwarePaperBroker` |
-| `ALPACA_PAPER` | `true` | Must be `true` unless intentionally going live |
-| `REBALANCE_BUDGET` | `0` | 0 = deploy all available cash |
-| `LOOKBACK_DAYS` | `730` | Calendar days — 730 ≈ 2 trading years |
-| `MAX_WEIGHT` | `1.0` | Per-asset cap; `0.05` = equal-weight over 20 stocks |
-| `DATA_SOURCE` | `alpaca` | `local` only for offline backtesting |
+| `ALPACA_API_KEY` / `ALPACA_SECRET_KEY` | | Blank → falls back to `CostAwarePaperBroker` |
+| `REBALANCE_BUDGET` | `0` | 0 = all available cash; capped at `min(budget, cash)` in `run_daily.py` |
+| `MAX_WEIGHT` | `1.0` | Passed as `max_weight` kwarg to `rebalance_porfolio()` |
+| `LOOKBACK_DAYS` | `730` | Calendar days — 730 ≈ 2 trading years of returns |
+| `DATA_SOURCE` | `alpaca` | `local` only for offline backtesting with pickle files |
 
 ---
 
 ## Broker interface
 
-Split into two ABCs (see `source/broker/base.py`):
+Two ABCs in `source/broker/base.py`:
 
-- **`BrokerBase`** — operational path used by `run_daily.py`: `get_positions()`,
-  `get_cash()`, `submit_order()`, `submit_and_await_fill()`, `cancel_order()`,
-  `is_market_open()`
-- **`BrokerHistory`** — analytics path used by `account_from_broker()`:
-  `get_order_history()`, `get_cash_flows()`, `supports_cash_flow_history`
+- **`BrokerBase`** — operational path (`run_daily.py`): `get_positions()`, `get_cash()`,
+  `submit_order()`, `submit_and_await_fill()`, `cancel_order()`, `is_market_open()`
+- **`BrokerHistory`** — analytics path (`account_from_broker()`): `get_order_history()`,
+  `get_cash_flows()`, `supports_cash_flow_history`
 
-When adding a new broker, implement `BrokerBase` at minimum. Implement
-`BrokerHistory` and set `supports_cash_flow_history = True` if the broker
-exposes transaction history (needed for equity curve / benchmark comparison).
+When adding a new broker implement `BrokerBase` at minimum. Add `BrokerHistory` and
+set `supports_cash_flow_history = True` only if the broker exposes transaction history
+(required for equity curve and benchmark comparison).
 
 ---
 
 ## CVaR optimizer
 
-`source/opt_tools.py` — `cvar_model_ortools` builds the LP/MIP once; call
-`change_cvar_params(alpha, beta)` to re-solve cheaply (objective only rebuilt).
+`source/opt_tools.py` — `cvar_model_ortools` builds the LP/MIP once. Call
+`change_cvar_params(alpha, beta)` to re-solve cheaply (only the objective is rebuilt).
 
-Key parameters:
-- `alpha` (default 0.90): CVaR confidence level
+- `alpha` (default 0.90): CVaR confidence level — covers worst (1−α) fraction of scenarios
 - `beta` (default 0.95): return vs risk weight; 0 = pure CVaR min, 1 = pure return max
-- `max_weight` (default 1.0): per-asset allocation cap — the most effective
-  lever for forcing diversification; LP corner solutions concentrate everything
-  in the top-mean asset without this
+- `max_weight` (default 1.0): per-asset allocation cap. Without this, LP corner solutions
+  concentrate everything in the single highest-mean asset.
+- `portfolio_delta` (default 1e9): turnover limit in dollars; 1e9 = sells freely allowed
 
-`rebalance_porfolio()` in `account_manager.py` is the public entry point.
-It reads `max_weight` and `portfolio_delta` from `**kwargs`, defaulting to
-`1.0` and `1e9` (unconstrained, sells allowed) respectively.
+`rebalance_porfolio()` in `account_manager.py` is the public entry point; it reads
+`max_weight` and `portfolio_delta` from `**kwargs`.
 
 ---
 
@@ -96,31 +84,29 @@ It reads `max_weight` and `portfolio_delta` from `**kwargs`, defaulting to
 ```shell
 python run_daily.py --dry-run    # skip guards + skip order submission (safe any time)
 python run_daily.py --no-guard   # skip guards, place real orders
-python run_daily.py              # production mode: guards active, places real orders
+python run_daily.py              # production: guards active, places real orders
 ```
 
-`test_rebalance.py` is a thin shim that forces `--dry-run` and delegates to
-`run_daily.main()`. Use `run_daily.py --dry-run` directly — they are identical.
+Guards = NYSE trading-day check + idempotency lock (prevents double-runs on the same day).
 
 ---
 
 ## S&P 500 universe
 
-`database_handler.save_sp500_tickers()` scrapes Wikipedia and caches the result
-at `data/sp500tickers.pickle`. `_load_universe()` in `run_daily.py` loads this
-cache; if it fails it falls back to a hardcoded 15-ticker list. The pickle is
-gitignored — it is regenerated on first run.
+`database_handler.save_sp500_tickers()` scrapes Wikipedia and caches the result at
+`data/sp500tickers.pickle` (gitignored, regenerated on first run). `_load_universe()`
+in `run_daily.py` loads this cache; on failure it falls back to a hardcoded 15-ticker list.
 
 ---
 
 ## Logging
 
-All modules use Python `logging` (never `print`). `run_daily.py` sets up:
+All modules use Python `logging` — never `print`. `run_daily.py` configures:
 - `logs/portfolio.log` — rotating daily, 90-day retention
-- `logs/audit.log` — append-only, never rotated (order and fill records)
+- `logs/audit.log` — append-only, never rotated
 
-The portfolio table and CVaR stats are always logged by `rebalance_porfolio()`
-regardless of the `print_portfolio` flag (which controls per-order lines only).
+`rebalance_porfolio()` always logs the portfolio table and CVaR stats regardless of
+the `print_portfolio` flag (that flag only controls per-order log lines).
 
 ---
 
@@ -130,18 +116,5 @@ regardless of the `print_portfolio` flag (which controls per-order lines only).
 pytest
 ```
 
-See `tests/` for the suite. Mocking strategy: `tests/fake.py` provides
-`FakeBroker` and `FakeDataManager`. New tests should follow this pattern and
-live under `tests/`.
-
----
-
-## Deployment
-
-See [readme.md § Deployment](readme.md#deployment) for full instructions
-covering local cron, VPS systemd, and Docker.
-
-Quick reference:
-- Systemd units: `deploy/portfolio-manager.{service,timer}`
-- Secrets on VPS: `/etc/portfolio-manager/secrets.env` (chmod 600)
-- Docker: `docker compose run --rm portfolio-manager`
+`tests/fake.py` provides `FakeBroker` and `FakeDataManager`. New tests should use
+these fakes and live under `tests/`.
