@@ -156,6 +156,11 @@ class cvar_model_ortools(AbstractModel):
                            retain their current position at most).
         must_buy:          Dict mapping ticker → minimum shares that must be
                            held in the solution.
+        max_weight:        Maximum fraction of total budget any single asset
+                           may represent (e.g. 0.30 caps each position at
+                           30 %).  Default 1.0 (unconstrained).  Tightening
+                           this breaks LP corner solutions and forces
+                           diversification.
         time_limit_ms:     Wall-clock time limit for the CBC solver in
                            milliseconds.  Raises RuntimeError if the limit is
                            reached without a feasible solution.  Default 30 s.
@@ -172,11 +177,13 @@ class cvar_model_ortools(AbstractModel):
         fractional: bool = True,
         ignore: list = [],
         must_buy: dict = {},
+        max_weight: float = 1.0,
         time_limit_ms: int = 30_000,
     ):
         cvar_alpha = cvar_params.alpha
         assert cvar_alpha < 1.0, "CVaR alpha must be less than 1."
         cvar_beta = cvar_params.beta
+        assert 0.0 < max_weight <= 1.0, "max_weight must be in (0, 1]."
 
         assert len(r) > 0 and len(r[0]) == len(price), (
             "Columns of r must match entries of price "
@@ -207,11 +214,10 @@ class cvar_model_ortools(AbstractModel):
         x = {}
         for s in stocks:
             x_lb = 0 if s not in must_buy else must_buy[s]
-            x_ub = (
-                B / price[s]
-                if (s not in ignore and price[s] > 0)
-                else np.maximum(0.0, current_portfolio.get_position(s))
-            )
+            if s not in ignore and price[s] > 0:
+                x_ub = max_weight * B / price[s]
+            else:
+                x_ub = np.maximum(0.0, current_portfolio.get_position(s))
             if fractional or current_portfolio.position_is_fractional(s):
                 x[s] = solver.NumVar(x_lb, x_ub, f"x_{s}")
             else:

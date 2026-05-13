@@ -58,27 +58,54 @@ from data.local import LocalDataManager as DataManager  # noqa: F401
 
 def save_sp500_tickers():
     """
+    Fetch S&P 500 constituents from Wikipedia and cache them locally.
+
+    Returns a dict: {ticker: {name, sector, subsector}}
+    Tickers are normalised to Alpaca format (dots replaced with slashes,
+    e.g. BRK.B -> BRK/B).
+
     https://pythonprogramming.net/sp500-company-list-python-programming-for-finance/
     """
     resp = requests.get(
-        "http://en.wikipedia.org/wiki/List_of_S%26P_500_companies"
+        "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies",
+        headers={"User-Agent": "Mozilla/5.0 (compatible; portfolio-manager/1.0)"},
+        timeout=15,
     )
+    resp.raise_for_status()
     soup = bs.BeautifulSoup(resp.text, "lxml")
-    table = soup.find("table", {"class": "wikitable sortable"})
+    # Primary selector: Wikipedia table has id="constituents"
+    table = soup.find("table", {"id": "constituents"})
+    if table is None:
+        table = soup.find("table", {"class": "wikitable sortable"})
+    if table is None:
+        raise RuntimeError("Could not find S&P 500 constituents table on Wikipedia.")
+
     tickers = {}
     for row in table.findAll("tr")[1:]:
-        ticker = row.findAll("td")[0].text.replace("\n", "")
-        ticker_info = {}
-        ticker_info["name"] = row.findAll("td")[1].text.replace("\n", "")
-        ticker_info["sector"] = row.findAll("td")[3].text.replace("\n", "")
-        ticker_info["subsector"] = row.findAll("td")[4].text.replace("\n", "")
-        tickers[ticker] = ticker_info
-    for ticker in tickers:
-        _, mkt_cap = get_market_cap(ticker)
-        tickers[ticker]["market_cap"] = mkt_cap
+        cells = row.findAll("td")
+        if len(cells) < 5:
+            continue
+        ticker = cells[0].text.strip()
+        tickers[ticker] = {
+            "name":      cells[1].text.strip(),
+            "sector":    cells[3].text.strip(),
+            "subsector": cells[4].text.strip(),
+        }
+
+    os.makedirs(path_to_data, exist_ok=True)
     path_to_file = os.path.join(path_to_data, "sp500tickers.pickle")
     with open(path_to_file, "wb") as f:
         pickle.dump(tickers, f)
+    log.info("Saved %d S&P 500 tickers to %s", len(tickers), path_to_file)
+    return tickers
+
+
+def get_sp500_tickers():
+    """Return cached S&P 500 dict, fetching from Wikipedia if not cached."""
+    path_to_file = Path(os.path.join(path_to_data, "sp500tickers.pickle"))
+    if not path_to_file.exists():
+        return save_sp500_tickers()
+    return pickle.load(path_to_file.open("rb"))
 
 
 def get_market_cap(ticker_str):
@@ -99,11 +126,6 @@ def get_market_cap(ticker_str):
         return (ticker_str, 0.0)
 
 
-def get_sp500_tickers():
-    path_to_file = Path(os.path.join(path_to_data, "sp500.pkl"))
-    if not path_to_file.exists():
-        save_sp500_tickers()
-    return pickle.load(path_to_file.open("rb"))
 
 
 def get_tickers_metadata(meta_data_file):

@@ -158,8 +158,8 @@ def rebalance_porfolio(
     ignored_securities = []
     if "ignored_securities" in kwargs:
         ignored_securities = kwargs["ignored_securities"]
-
-    # Create model with default parameters
+    max_weight = float(kwargs.get("max_weight", 1.0))
+    portfolio_delta = float(kwargs.get("portfolio_delta", 1e9))
 
     opt_model = cvar_model_ortools(
         cvar_params,
@@ -168,8 +168,9 @@ def rebalance_porfolio(
         current_portfolio=base_portfolio,
         budget=additional_cash,
         fractional=fractional_stocks,
-        portfolio_delta=0,
+        portfolio_delta=portfolio_delta,
         ignore=ignored_securities,
+        max_weight=max_weight,
     )
 
     cvar_sol1, cvar_stats1 = opt_model.change_cvar_params(
@@ -183,17 +184,24 @@ def rebalance_porfolio(
     if print_portfolio:
         for o in orders:
             log.info("  %s", o)
-        p = new_portfolio.copy()
-        p["name"] = [
-            data_manager.get_metadata(s)["name"] for s in new_portfolio.index
-        ]
-        p["sector"] = [
-            data_manager.get_metadata(s)["sector"] for s in new_portfolio.index
-        ]
-        p["subsector"] = [
-            data_manager.get_metadata(s)["subsector"]
-            for s in new_portfolio.index
-        ]
-        log.info("New portfolio:\n%s", p.to_string())
-        log.info("CVaR stats: %s", cvar_stats1)
+
+    # Always log the resulting portfolio table and CVaR stats.
+    p = new_portfolio.copy()
+    p["name"] = [
+        data_manager.get_metadata(s)["name"] for s in new_portfolio.index
+    ]
+    p["sector"] = [
+        data_manager.get_metadata(s)["sector"] for s in new_portfolio.index
+    ]
+    p["subsector"] = [
+        data_manager.get_metadata(s)["subsector"]
+        for s in new_portfolio.index
+    ]
+    p["value"] = p["position"].map("${:,.0f}".format)
+    p["alloc"] = p["allocation"].map("{:.1%}".format)
+    log.info(
+        "New portfolio:\n%s",
+        p[["value", "alloc", "sector", "name"]].to_string(),
+    )
+    log.info("CVaR stats: %s", cvar_stats1)
     return orders
